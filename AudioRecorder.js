@@ -260,8 +260,8 @@ document.getElementById('toggle').addEventListener('click', () => {
                 }});
             })
             .catch(error => {
-                console.error("无法访问媒体设备:", error);
-                alert("无法访问麦克风，请检查权限设置。");
+                //console.error("无法访问媒体设备:", error);
+                //alert("无法访问麦克风，请检查权限设置。");
             });
     }
 });
