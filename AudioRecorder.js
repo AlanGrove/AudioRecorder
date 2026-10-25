@@ -14,6 +14,7 @@ let copyPreference = 'plain'; // 默认复制选项
 let activeAudioStream = null;
 let activeAudioContext = null;
 let waveformAnimationId = null;
+let isFinalizingRecording = false;
 const AUTO_DOWNLOAD_STORAGE_KEY = 'audioRecorderAutoDownload';
 const RECORDER_WINDOW_SIZES = {
     compact: { width: 396, height: 132 },
@@ -863,9 +864,12 @@ function beforeUnloadListener(event) {
 
 document.getElementById('toggle').addEventListener('click', async () => {
     const button = document.getElementById('toggle');
+    if (isFinalizingRecording) return;
     const isRecording = button.classList.contains('recording');
 
     if (isRecording) {
+        isFinalizingRecording = true;
+        button.disabled = true;
         mediaRecorder.stop();
         stopTimer();
         button.classList.remove('recording');
@@ -892,6 +896,7 @@ document.getElementById('toggle').addEventListener('click', async () => {
             //document.getElementById('reset').disabled = true; 暂时取消，需要时可以重置时间码为00：00：00
         }
 
+        window.AudioRecorderDrive?.setRecording(null);
         navigator.mediaDevices.getUserMedia({ audio: true })
             .then(async stream => {
                 activeAudioStream = stream;
@@ -927,6 +932,7 @@ document.getElementById('toggle').addEventListener('click', async () => {
                 };
 
                 mediaRecorder.onstop = async function() {
+                    try {
                     await mp3Processor.flush();
                     mp3Processor.disconnect();
                     source.disconnect();
@@ -970,10 +976,23 @@ document.getElementById('toggle').addEventListener('click', async () => {
                     downloadAudio(mp3Blob, filename);
                 };
                 document.getElementById('downloadMP3').onclick = downloadCurrentMP3;
+                // Capture independent blobs and filenames before the next recording can start.
+                window.AudioRecorderDrive?.setRecording({
+                    id: crypto.randomUUID(),
+                    mp3: { blob: new Blob(mp3Data, { type: 'audio/mpeg' }), name: generateFilename('mp3') },
+                    webm: { blob: audioBlob, name: generateFilename('webm') }
+                });
                 if (isAutoDownloadEnabled()) {
                     downloadCurrentMP3();
                 }
-
+                    } catch (error) {
+                        stopActiveAudioResources();
+                        console.error('录音处理失败:', error);
+                        alert('录音处理失败，请保留当前页面并尝试下载录音。');
+                    } finally {
+                        isFinalizingRecording = false;
+                        button.disabled = false;
+                    }
                 };
 
                 mediaRecorder.start();

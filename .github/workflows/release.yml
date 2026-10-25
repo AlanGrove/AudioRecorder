@@ -47,6 +47,8 @@ jobs:
             "manifest.json",
             "AudioRecorder.html",
             "AudioRecorder.js",
+            "google-drive.js",
+            "google-drive.css",
             "AudioRecorderWorklet.js",
             "background.js",
             "lamejs.iife.js",

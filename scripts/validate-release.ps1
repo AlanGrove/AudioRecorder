@@ -46,6 +46,8 @@ $requiredFiles = @(
     "manifest.json",
     "AudioRecorder.html",
     "AudioRecorder.js",
+    "google-drive.js",
+    "google-drive.css",
     "AudioRecorderWorklet.js",
     "background.js",
     "lamejs.iife.js",
@@ -114,7 +116,9 @@ foreach ($file in $textFiles) {
         Add-Failure "absolute local path found in $relative"
     }
 
-    if ($content -match "client_secret|refresh_token|access_token|BEGIN (RSA |EC |OPENSSH |PRIVATE )?KEY|-----BEGIN") {
+    # OAuth response field names are source code, not embedded credentials.
+    # Still reject actual quoted credential assignments and private-key material.
+    if ($content -match '(?i)(?:client_secret|refresh_token|access_token)\s*["'']?\s*[:=]\s*["''][^"'']{16,}["'']|BEGIN (RSA |EC |OPENSSH |PRIVATE )?KEY|-----BEGIN') {
         Add-Failure "secret-like content found in $relative"
     }
 

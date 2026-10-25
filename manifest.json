@@ -3,7 +3,8 @@
   "name": "Audio Recorder",
   "version": "1.23",
   "description": "Local microphone recorder for WebM and MP3 downloads.",
-  "permissions": ["downloads"],
+  "permissions": ["downloads", "identity"],
+  "optional_host_permissions": ["https://www.googleapis.com/*"],
   "background": {
     "service_worker": "background.js"
   },

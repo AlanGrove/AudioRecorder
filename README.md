@@ -10,7 +10,8 @@ Audio Recorder 是一个 Chrome Manifest V3 本地录音扩展。它在用户主
 - 支持下载 WebM。
 - 支持使用 `@breezystack/lamejs` 在本地编码并下载 MP3。
 - 支持比特率选择、文件命名规则、时间码复制和自动下载 MP3 开关。
-- 支持打开 `links.txt` 或文本框中保存的云端链接；当前代码不会上传录音。
+- 支持打开 `links.txt` 或文本框中保存的云端链接。
+- 右上角设置可导入 Google OAuth JSON、连接 Drive、选择格式/文件夹，并开启录音停止后自动上传（默认关闭）。
 
 ## 项目结构
 
@@ -44,11 +45,12 @@ Audio Recorder 是一个 Chrome Manifest V3 本地录音扩展。它在用户主
 
 ## 权限说明
 
-当前 `manifest.json` 只声明：
+当前 `manifest.json` 声明：
 
 - `downloads`: 用于 `AudioRecorder.js` 中的 `chrome.downloads.showDefaultFolder()`，在下载完成后由用户确认是否打开默认下载文件夹。
+- `identity`：插件中用于 Google Drive 授权。
 
-未声明 `host_permissions`。扩展不需要跨站读取页面内容，不需要任意网站访问权限。
+未声明固定的 `host_permissions`。可选访问范围仅为 `https://www.googleapis.com/*`，在插件用户点击“连接 Google Drive”时申请。
 
 麦克风访问由 `navigator.mediaDevices.getUserMedia({ audio: true })` 在用户点击录音按钮后触发，浏览器会显示权限提示。
 
@@ -92,7 +94,7 @@ git push origin v1.23
 
 ## 注意事项
 
-- 当前代码没有 Google Drive API 上传逻辑，也没有 OAuth Client Secret。
+- Google Drive 上传需用户主动连接并手动上传或开启自动上传。代码不包含 OAuth Client Secret。
 - `links.txt` 仅用于保存用户可手动打开的链接。
 - 不要把真实录音、个人链接、令牌、私钥或 `.env` 文件提交到仓库。
 - `lamejs.iife.js` 是第三方压缩 IIFE 文件，来源和许可证见 `THIRD_PARTY_NOTICES.md`。
@@ -114,4 +116,33 @@ git push origin v1.23
 - 使用网站时，点击录音按钮并允许麦克风访问。录音、预览和 WebM / MP3 导出均在浏览器本地完成。
 - “打开录音文件夹”和扩展窗口控制等 Chrome 扩展专用操作在普通网页中不可用；这些操作已有能力检测，不影响网页录音入口。
 - 此次公开与网站部署沿用源码版本 1.23，不递增插件版本号、不生成源码 ZIP。
+
+## Google Drive 上传（未发版功能）
+
+网页设置：启用 Google Cloud 项目的 Drive API，配置同意屏幕及 `drive.file` 范围；测试模式下添加测试用户。创建 **Web 应用** OAuth 客户端，在“已获授权的 JavaScript 来源”加入 `https://alangrove.github.io`（不带路径）。
+
+点击右上角设置 → 导入 Google 配置 JSON（或填写客户端 ID）→ 连接 Google Drive。首次加载 Google 授权组件后，按提示再次点击连接。完成 Google 授权后选择 MP3 / WebM、文件夹名称，并开启自动上传。也可点击“上传当前录音”。
+
+导入文件仅在本机解析，只保存公开的客户端 ID，不保存或上传完整 JSON 及其余字段。服务账号、桌面客户端 JSON 不适用于网页版。不要将 Google 配置文件提交到公开仓库。
+
+Chrome 插件使用官方 `chrome.identity.getAuthToken`，不会加载远程授权脚本。必须在 Google Cloud 创建绑定实际插件 ID 的 **Chrome 扩展** OAuth 客户端，在 `manifest.json` 添加 `oauth2` 字段后重新加载插件：
+
+```json
+"oauth2": {
+  "client_id": "YOUR_CHROME_EXTENSION_CLIENT_ID.apps.googleusercontent.com",
+  "scopes": ["https://www.googleapis.com/auth/drive.file"]
+}
+```
+
+真实 ID 未配置前，插件录音和本地下载仍可使用；连接 Drive 会提示完成配置。浏览器不能通过导入文件修改已加载插件的清单，插件导入入口仅校验已配置的 ID。不需要在本项目中填写 API Key、客户端密钥或服务账号私钥。
+
+上传使用 `drive.file`，仅访问本应用创建/标记的文件夹，不申请整个云盘权限。自动创建的文件夹即使与其他文件夹同名，也不会读取或复用其他文件夹。
+
+采用可恢复上传和 8 MiB 分块，以固定云端文件 ID 进行同一录音/格式的重试，避免完成响应丢失导致重复创建。网络、配额或授权错误会显示状态并保留待传音频，重新连接后可点击“重试待上传”。上传与本地自动下载相互独立。
+
+待传音频、上传会话和 OAuth 授权仅保存在页面内存中，刷新/关闭页面会丢失队列，关闭前请完成上传或下载备份。网页授权过期后需主动重新连接，不支持长期无人值守的授权续期。设置按浏览器来源分别保存在本机，不跨设备同步。
+
+断开连接会清除本页授权并关闭自动上传，不删除云端录音；若需撤销 Google 账号上的应用授权，请在 Google 账号第三方应用权限中操作。
+
+验证方法：运行 `node scripts/test-google-drive.cjs`（模拟测试，不访问真实云盘）及 `scripts/validate-release.ps1 -ExpectedVersion 1.23`。配置真实 OAuth 后，测试手动上传、自动上传开关、错误重试、本地下载，并核对云盘文件名、大小和播放。
 

@@ -819,8 +819,47 @@ button {
     </style>
 
   <link rel="stylesheet" href="shared/module-switcher.css">
+  <link rel="stylesheet" href="google-drive.css">
 </head>
 <body>
+<button id="driveSettingsButton" type="button" aria-label="设置" title="设置" aria-haspopup="dialog" aria-controls="driveSettings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m9.4 3-.6 2.2-2 .9-2-.8L2.7 9l1.7 1.5v2.3L2.7 14l2.1 3.7 2-.7 2 .9.6 2.1h4.2l.6-2.1 2-.9 2 .7 2.1-3.7-1.7-1.3v-2.3L20.3 9l-2.1-3.7-2 .8-2-.9-.6-2.2z"/><circle cx="11.5" cy="11.5" r="3.2"/></svg>
+</button>
+<dialog id="driveSettings" aria-labelledby="driveSettingsTitle">
+    <div class="drive-header">
+        <div><h2 id="driveSettingsTitle">云端设置</h2><p class="drive-muted">将录音保存到你自己的 Google Drive。</p></div>
+        <button id="driveSettingsClose" type="button" aria-label="关闭设置">关闭</button>
+    </div>
+    <p id="driveAccount">尚未连接 Google Drive</p>
+    <label class="drive-field" for="driveClientId">Google OAuth 客户端 ID
+        <input id="driveClientId" type="text" placeholder="…apps.googleusercontent.com" autocomplete="off" spellcheck="false">
+    </label>
+    <p id="driveClientHelp" class="drive-muted"></p>
+    <button id="driveSaveClient" type="button">保存客户端 ID</button>
+    <button id="driveImportClient" type="button">导入 Google 配置 JSON</button>
+    <input id="driveConfigFile" type="file" accept=".json,application/json" hidden>
+    <p class="drive-muted">配置文件只在本机读取；仅保存客户端 ID，其余字段不会保存或上传。</p>
+    <div class="drive-actions">
+        <button id="driveConnect" class="drive-primary" type="button">连接 Google Drive</button>
+        <button id="driveDisconnect" type="button" disabled>断开连接</button>
+    </div>
+    <label class="drive-auto" for="driveAutoUpload"><span>录音停止后自动上传</span><input id="driveAutoUpload" type="checkbox"></label>
+    <label class="drive-field" for="driveFormat">上传格式
+        <select id="driveFormat"><option value="mp3">MP3</option><option value="webm">WebM</option></select>
+    </label>
+    <label class="drive-field" for="driveFolderName">云端文件夹名称
+        <input id="driveFolderName" type="text" value="Audio Recorder" maxlength="100">
+    </label>
+    <p class="drive-muted">自动创建本应用专用的文件夹；不会读取其他云盘文件。上传不会替代本地下载。</p>
+    <div class="drive-actions">
+        <button id="driveUploadCurrent" type="button" disabled>上传当前录音</button>
+        <button id="driveRetry" type="button" disabled>重试待上传</button>
+    </div>
+    <p id="driveStatus" role="status" aria-live="polite">自动上传默认关闭。连接后可上传录音。</p>
+    <p id="driveQueue" class="drive-muted">没有待上传文件。</p>
+    <a id="driveLastUpload" target="_blank" rel="noopener noreferrer" hidden></a>
+    <p class="drive-muted">刷新页面或授权过期后需重新连接。关闭页面前请完成上传或下载备份。</p>
+</dialog>
 <div class="background-box">     
     <div class="recorder-title-row">
         <h1>音频录制器 1.23</h1>
@@ -830,6 +869,7 @@ button {
         </label>
         <button id="windowSizeToggle" class="window-size-toggle" type="button" aria-label="切换窗口大小" data-tooltip="切换窗口大小"><span class="window-size-icon" aria-hidden="true"></span></button>
     </div>
+<p id="driveSummary" role="status" aria-live="polite"></p>
 <div class="timer-row">
     <div class="record-control-wrap">
         <button id="toggle" type="button" aria-label="开始录音"><span class="record-icon" aria-hidden="true"></span></button>
@@ -929,6 +969,7 @@ button {
     </div>
 
     <audio id="audioPlayback" controls></audio>
+<script src="google-drive.js"></script>
 <script src="AudioRecorder.js"></script>
     <script src="lamejs.iife.js"></script>
 </body>
