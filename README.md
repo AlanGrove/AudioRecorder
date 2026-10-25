@@ -99,8 +99,18 @@ git push origin v1.23
 
 ## 仓库迁移记录（未发版）
 
-- 个人维护仓库：`AlanGrove/AudioRecorder`，保持私有状态。
+- 个人维护仓库：`AlanGrove/AudioRecorder`，迁移完成时保持私有状态。
 - 本次同步源码来自 `secure-artifacts/AudioRecorder` 的 `b157876359f7c14afecd93dd9ea3c178fd7db96b` 提交，即已回退界面改动的 1.23 源码。
 - 以新增提交延续个人仓库原有的 1.21 提交历史；保留旧文件 `AudioRecorder 1.21` 和 `lame.min.js`，当前扩展入口仍为 `manifest.json` 和 `AudioRecorder.html`。
 - 此次仅同步源码，沿用源仓库的 1.23 版本号，未递增版本号、未生成 ZIP，也未发布 GitHub Pages。
+
+## GitHub Pages 网站
+
+- 源码仓库：<https://github.com/AlanGrove/AudioRecorder>。
+- 网站地址：<https://alangrove.github.io/AudioRecorder/>。
+- `index.html` 将网站首页自动跳转到 `AudioRecorder.html`；`.nojekyll` 用于按原样发布静态文件。
+- 在仓库 Settings → Pages 中选择 Deploy from a branch，发布来源为 `main` 分支的 `/ (root)`。
+- 使用网站时，点击录音按钮并允许麦克风访问。录音、预览和 WebM / MP3 导出均在浏览器本地完成。
+- “打开录音文件夹”和扩展窗口控制等 Chrome 扩展专用操作在普通网页中不可用；这些操作已有能力检测，不影响网页录音入口。
+- 此次公开与网站部署沿用源码版本 1.23，不递增插件版本号、不生成源码 ZIP。
 
