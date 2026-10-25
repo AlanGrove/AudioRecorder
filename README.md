@@ -108,7 +108,8 @@ git push origin v1.23
 
 - 源码仓库：<https://github.com/AlanGrove/AudioRecorder>。
 - 网站地址：<https://alangrove.github.io/AudioRecorder/>。
-- `index.html` 将网站首页自动跳转到 `AudioRecorder.html`；`.nojekyll` 用于按原样发布静态文件。
+- `index.html` 直接显示录音界面，访问网站时地址保持为 `/AudioRecorder/`，不再跳转到 `AudioRecorder.html`；`.nojekyll` 用于按原样发布静态文件。
+- `AudioRecorder.html` 继续作为插件页面和旧网址入口。两个 HTML 文件共用 `AudioRecorder.js`、MP3 编码库及其他相对路径资源；今后修改页面结构或内嵌样式时，应同步更新两个 HTML 文件。
 - 在仓库 Settings → Pages 中选择 Deploy from a branch，发布来源为 `main` 分支的 `/ (root)`。
 - 使用网站时，点击录音按钮并允许麦克风访问。录音、预览和 WebM / MP3 导出均在浏览器本地完成。
 - “打开录音文件夹”和扩展窗口控制等 Chrome 扩展专用操作在普通网页中不可用；这些操作已有能力检测，不影响网页录音入口。
