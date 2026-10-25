@@ -13,6 +13,8 @@ function harness(options = {}) {
     const calls = [];
     const sessions = new Map();
     const completed = new Map();
+    const copied = [];
+    let legacyInput = null;
     let idCount = 0;
     let chunkCount = 0;
     const state = { failChunk: 0, lostFinal: false, unauthorized: false, badLocation: false, hold: null };
@@ -24,9 +26,13 @@ function harness(options = {}) {
             this.textContent = '';
             this.hidden = false;
             this.classList = { toggle() {} };
+            this.style = {};
         }
         addEventListener(type, listener) { (this.listeners[type] ||= []).push(listener); }
         focus() {}
+        select() { this.selected = true; }
+        remove() {}
+        appendChild(input) { legacyInput = input; }
         click() { return fire(this, 'click'); }
         showModal() { this.open = true; }
         close() { this.open = false; }
@@ -91,7 +97,19 @@ function harness(options = {}) {
         throw new Error('Unexpected mock request: ' + url);
     }
     const context = {
-        document: { readyState: 'complete', getElementById: el, head: { appendChild() { throw new Error('Unexpected SDK load'); } } },
+        document: { readyState: 'complete', getElementById: el,
+            createElement: () => new Element(),
+            body: { appendChild(input) { legacyInput = input; } },
+            execCommand: () => {
+                if (options.legacyCopy === false) return false;
+                copied.push(legacyInput.value);
+                return true;
+            },
+            head: { appendChild() { throw new Error('Unexpected SDK load'); } } },
+        navigator: options.clipboardMissing ? {} : { clipboard: { writeText: async text => {
+            if (options.clipboardFails) throw new Error('simulated denied clipboard');
+            copied.push(text);
+        } } },
         location: { protocol: options.extension ? 'chrome-extension:' : 'https:' },
         localStorage: { getItem: key => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
         URL, URLSearchParams, Blob, AbortController, fetch, console, Date,
@@ -130,7 +148,7 @@ function harness(options = {}) {
             webm: { blob: new Blob(['webm'], { type: 'audio/webm' }), name: id + '.webm' } };
     }
     const uploads = () => calls.filter(c => c.method === 'POST' && c.url.includes('uploadType=resumable'));
-    return { el, fire, connect, until, recording, calls, state, stored, completed, uploads,
+    return { el, fire, connect, until, recording, calls, state, stored, completed, uploads, copied,
         drive: context.AudioRecorderDrive };
 }
 
@@ -254,4 +272,71 @@ test('拒绝向非 Google 上传地址发送授权', async () => {
     await h.until(() => !h.el('driveRetry').disabled);
     assert.match(h.el('driveStatus').textContent, /上传地址无效/);
     assert.ok(h.calls.every(c => new URL(c.url).origin === 'https://www.googleapis.com'));
+});
+
+test('设置和主页面都复制同一云端链接，不重复上传或打开链接', async () => {
+    const h = harness();
+    await h.connect();
+    h.drive.setRecording(h.recording());
+    await h.fire('driveUploadCurrent');
+    await h.until(() => h.completed.size === 1 && !h.el('driveUploadCurrent').disabled);
+    const url = 'https://drive.google.com/file/d/file-1/view';
+    assert.equal(h.el('driveMainResult').hidden, false);
+    assert.equal(h.el('driveResult').hidden, false);
+    assert.equal(h.el('driveLastUploadUrl').textContent, url);
+    assert.equal(h.el('driveMainUploadUrl').textContent, url);
+    assert.equal(h.el('driveOpenUpload').href, url);
+    const requestCount = h.calls.length;
+    await h.fire('driveLastUpload');
+    await h.until(() => h.copied.length === 1);
+    await h.fire('driveMainCopy');
+    await h.until(() => h.copied.length === 2);
+    assert.deepEqual(h.copied, [url, url]);
+    assert.equal(h.el('driveCopyStatus').textContent, '链接已复制');
+    assert.equal(h.el('driveMainCopyStatus').textContent, '链接已复制');
+    assert.equal(h.calls.length, requestCount);
+});
+
+test('剪贴板受限时提供已选中的链接，不虚报复制成功', async () => {
+    const h = harness({ clipboardFails: true, legacyCopy: false });
+    await h.connect();
+    h.drive.setRecording(h.recording());
+    await h.fire('driveUploadCurrent');
+    await h.until(() => h.completed.size === 1 && !h.el('driveUploadCurrent').disabled);
+    await h.fire('driveMainCopy');
+    await h.until(() => h.el('driveMainCopyFallback').selected);
+    assert.equal(h.copied.length, 0);
+    assert.equal(h.el('driveMainCopyFallback').hidden, false);
+    assert.equal(h.el('driveMainCopyFallback').value, 'https://drive.google.com/file/d/file-1/view');
+    assert.match(h.el('driveMainCopyStatus').textContent, /未能自动复制/);
+});
+
+test('缺少 Clipboard API 时设置弹窗内仍可使用兼容复制', async () => {
+    const h = harness({ clipboardMissing: true });
+    await h.connect();
+    h.drive.setRecording(h.recording());
+    await h.fire('driveUploadCurrent');
+    await h.until(() => h.completed.size === 1 && !h.el('driveUploadCurrent').disabled);
+    await h.fire('driveSettingsButton');
+    await h.fire('driveLastUpload');
+    await h.until(() => h.copied.length === 1);
+    assert.equal(h.copied[0], 'https://drive.google.com/file/d/file-1/view');
+});
+
+test('下一段上传成功后两处链接同步更新，导入后隐藏首次配置', async () => {
+    const h = harness();
+    assert.equal(h.el('driveSetup').hidden, true);
+    await h.connect();
+    h.drive.setRecording(h.recording('first'));
+    await h.fire('driveUploadCurrent');
+    await h.until(() => h.completed.size === 1 && !h.el('driveUploadCurrent').disabled);
+    await h.fire('driveMainCopy');
+    await h.until(() => h.copied.length === 1);
+    h.drive.setRecording(h.recording('second'));
+    await h.fire('driveUploadCurrent');
+    await h.until(() => h.completed.size === 2 && !h.el('driveUploadCurrent').disabled);
+    assert.equal(h.el('driveMainUploadName').textContent, 'second.mp3');
+    assert.equal(h.el('driveLastUploadUrl').textContent, 'https://drive.google.com/file/d/file-2/view');
+    assert.equal(h.el('driveMainUploadUrl').textContent, h.el('driveLastUploadUrl').textContent);
+    assert.equal(h.el('driveCopyStatus').textContent, '');
 });

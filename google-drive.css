@@ -6,38 +6,62 @@
 }
 #driveSettingsButton:hover { color: #007aff; background: #f0f6ff; }
 #driveSettingsButton svg { width: 20px; height: 20px; }
-#driveSettings { box-sizing: border-box; width: min(420px, calc(100vw - 24px));
+#driveSettings {
+    box-sizing: border-box; width: min(390px, calc(100vw - 24px));
     max-height: calc(100vh - 24px); padding: 22px; overflow: auto;
     border: 1px solid #e5e9ef; border-radius: 22px; text-align: left;
     color: #1d2939; background: #fff; box-shadow: 0 22px 80px #10203933;
-    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
 #driveSettings::backdrop { background: #17233744; backdrop-filter: blur(5px); }
-#driveSettings .drive-header { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+#driveSettings .drive-header { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 #driveSettings h2 { margin: 0; color: #172337; font-size: 19px; }
-#driveSettings p { margin: 8px 0 14px; }
+#driveSettings h3 { margin: 0; font-size: 14px; font-weight: 600; }
+#driveSettings p { margin: 6px 0 10px; }
 #driveSettings .drive-muted { color: #667085; font-size: 12px; }
-#driveSettings label.drive-field { display: block; margin: 14px 0; font-weight: 600; }
-#driveSettings input[type="text"], #driveSettings select {
-    display: block; box-sizing: border-box; width: 100%; margin-top: 6px;
-    padding: 10px 11px; border: 1px solid #dce1e8; border-radius: 10px;
-    color: #1d2939; background: #f8fafc; font: inherit; font-weight: 400;
-}
 #driveSettings button {
-    box-sizing: border-box; width: auto; height: auto; min-height: 36px;
+    box-sizing: border-box; width: auto; height: auto; min-height: 34px;
     margin: 0; padding: 8px 12px; border: 1px solid #dce1e8; border-radius: 10px;
-    color: #344054; background: #f8fafc; box-shadow: none; font-size: 12px; font-weight: 600;
+    color: #344054; background: #fff; box-shadow: none; font-size: 12px; font-weight: 600;
 }
+#driveSettings #driveSettingsClose { width: 28px; min-height: 28px; padding: 0; font-size: 20px; color: #667085; border: 0; background: #f2f4f7; }
 #driveSettings button.drive-primary { color: #fff; background: #007aff; border-color: #007aff; }
 #driveSettings button:disabled { opacity: .45; cursor: default; }
-#driveSettings button[hidden], #driveSettings a[hidden] { display: none; }
+#driveSettings .drive-step { display: flex; gap: 10px; padding: 13px; margin: 10px 0; border-radius: 14px; background: #f6f8fb; }
+#driveSettings .drive-step-body { flex: 1; min-width: 0; }
+#driveSettings .drive-step-number { display: grid; place-items: center; flex: 0 0 23px; height: 23px; border-radius: 50%; font-size: 12px; font-weight: 600; color: #007aff; background: #e7efff; }
+#driveSettings .drive-auto { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px 0; }
+#driveSettings .drive-auto strong { display: block; font-size: 14px; font-weight: 600; }
+#driveSettings .drive-auto small { display: block; color: #667085; font-size: 11px; margin-top: 4px; }
+#driveSettings .drive-auto input { appearance: none; flex: 0 0 40px; width: 40px; height: 24px; margin: 0; border-radius: 20px; background: #d0d5dd; cursor: pointer; position: relative; transition: background .15s; }
+#driveSettings .drive-auto input::after { content: ""; position: absolute; width: 20px; height: 20px; left: 2px; top: 2px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #0002; transition: transform .15s; }
+#driveSettings .drive-auto input:checked { background: #34c759; }
+#driveSettings .drive-auto input:checked::after { transform: translateX(16px); }
 #driveSettings .drive-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
-#driveSettings .drive-auto { display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 0; margin: 12px 0; border-top: 1px solid #edf0f4; border-bottom: 1px solid #edf0f4; }
-#driveSettings .drive-auto input { width: 20px; height: 20px; accent-color: #007aff; }
-#driveSettings #driveStatus { padding: 11px; border-radius: 10px; background: #f2f7ff;
-    overflow-wrap: anywhere; font-size: 12px; }
+#driveSettings #driveStatus { padding: 10px; border-radius: 10px; background: #f2f7ff; overflow-wrap: anywhere; font-size: 12px; }
 #driveSettings #driveStatus.is-error { color: #9b3b13; background: #fff4e8; }
-#driveSettings #driveLastUpload { display: inline-block; overflow-wrap: anywhere; color: #007aff; font-size: 12px; }
-#driveSettings #driveLastUpload[hidden] { display: none; }
+#driveSettings #driveAdvanced { border-top: 1px solid #edf0f4; padding-top: 12px; margin-top: 14px; }
+#driveSettings #driveAdvanced summary { cursor: pointer; color: #667085; font-size: 12px; }
+#driveSettings label.drive-field { display: block; margin: 14px 0; font-size: 12px; font-weight: 600; }
+#driveSettings input[type="text"], #driveSettings select, #driveMainCopyFallback {
+    box-sizing: border-box; width: 100%; margin-top: 6px; padding: 9px 10px;
+    border: 1px solid #dce1e8; border-radius: 9px; color: #1d2939; background: #f8fafc; font: inherit; font-size: 12px; font-weight: 400;
+}
+#driveSettings .drive-result { margin-top: 14px; padding: 12px; border: 1px solid #dbe8fc; border-radius: 13px; background: #f5f9ff; }
+#driveSettings .drive-result-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+#driveSettings .drive-result-heading a { color: #007aff; font-size: 11px; text-decoration: none; }
+#driveSettings .drive-copy-link, #driveMainResult .drive-copy-link {
+    display: flex; flex-direction: column; gap: 4px; width: 100%; height: auto;
+    padding: 10px 0; border: 0; border-radius: 8px; color: #344054;
+    background: transparent; text-align: left; box-shadow: none; font: inherit; cursor: pointer;
+}
+.drive-file-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.drive-file-url { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #667085; font-size: 11px; font-weight: 400; }
+.drive-copy-hint, .drive-main-label { color: #007aff; font-size: 11px; font-weight: 500; }
+.drive-copy-status { color: #16813b; font-size: 11px; margin: 2px 0; }
+.drive-copy-status:empty { display: none; }
+#driveMainResult { box-sizing: border-box; width: min(320px, calc(100vw - 32px)); margin: 9px auto; padding: 0 12px; border: 1px solid #dbe8fc; border-radius: 12px; background: #f2f7ff; text-align: left; }
 #driveSummary { max-width: 320px; margin: 5px auto; color: #667085; font-size: 11px; overflow-wrap: anywhere; }
 #driveSummary:empty { display: none; }
+#driveSettings [hidden], #driveMainResult[hidden], #driveMainResult [hidden] { display: none !important; }
+#driveSettings button:focus-visible, #driveSettings summary:focus-visible, #driveSettings input:focus-visible, #driveMainResult button:focus-visible { outline: 2px solid #007aff; outline-offset: 3px; }

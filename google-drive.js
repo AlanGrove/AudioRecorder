@@ -26,12 +26,14 @@
     let pumping = null;
     let activeController = null;
     let expiryTimer = null;
+    let lastUploadUrl = '';
     const jobs = [];
     const folderCache = new Map();
     const element = id => document.getElementById(id);
     const connected = () => Boolean(token && account && Date.now() < tokenExpires);
     function message(text, error = false) {
         element('driveStatus').textContent = text;
+        element('driveStatus').hidden = !text;
         element('driveStatus').classList.toggle('is-error', error);
         element('driveSummary').textContent = text;
     }
@@ -60,16 +62,22 @@
         return clientId;
     }
     function render() {
+        const configured = /^[\w.-]+\.apps\.googleusercontent\.com$/.test(extension ? manifestClient : settings.clientId);
+        element('driveSetup').hidden = configured;
+        element('driveConnectStep').textContent = configured ? '1' : '2';
         element('driveAutoUpload').checked = settings.autoUpload;
         element('driveConnect').disabled = authorizing || Boolean(pumping);
         element('driveConnect').textContent = authorizing ? '正在连接…' : connected() ? '重新连接 Google Drive' : '连接 Google Drive';
         element('driveDisconnect').disabled = !token && !authorizing;
         element('driveUploadCurrent').disabled = !currentRecording || !connected() || Boolean(pumping);
         element('driveRetry').disabled = !connected() || Boolean(pumping) || !jobs.some(j => j.status === 'failed');
+        element('driveRetry').hidden = !jobs.some(j => j.status === 'failed');
         const pending = jobs.filter(j => j.status !== 'done').length;
         element('driveQueue').textContent = pending ? pending + ' 个文件待上传。关闭或刷新页面会丢失待传文件，请先下载备份。' : '没有待上传文件。';
+        element('driveQueue').hidden = !pending;
         element('driveAccount').textContent = connected() ?
             '已连接：' + (account.displayName || 'Google Drive') : '尚未连接 Google Drive';
+        element('driveAutoHelp').textContent = '停止录音后自动保存 ' + settings.format.toUpperCase() + '，本地下载不受影响。';
     }
     function clearAuth() {
         const previous = token;
@@ -167,8 +175,8 @@
             return;
         }
         if (!extension && !/^[\w.-]+\.apps\.googleusercontent\.com$/.test(settings.clientId)) {
-            message('请先填写并保存 Google OAuth 客户端 ID。', true);
-            element('driveClientId').focus();
+            message('先选择你下载的 Google 配置文件，再连接云盘。', true);
+            element('driveImportClient').focus();
             return;
         }
         // SDK loading happens before the OAuth popup. A second click preserves user activation.
@@ -320,10 +328,54 @@
         throw new Error('上传未完成，请重试。');
     }
     function showResult(job, result) {
-        const link = element('driveLastUpload');
-        link.href = 'https://drive.google.com/file/d/' + encodeURIComponent(result.id) + '/view';
-        link.textContent = '查看云端文件：' + job.name;
-        link.hidden = false;
+        lastUploadUrl = 'https://drive.google.com/file/d/' + encodeURIComponent(result.id) + '/view';
+        element('driveLastUploadName').textContent = job.name;
+        element('driveMainUploadName').textContent = job.name;
+        element('driveLastUploadUrl').textContent = lastUploadUrl;
+        element('driveMainUploadUrl').textContent = lastUploadUrl;
+        element('driveOpenUpload').href = lastUploadUrl;
+        element('driveLastUpload').title = lastUploadUrl;
+        element('driveMainCopy').title = lastUploadUrl;
+        element('driveResult').hidden = false;
+        element('driveLastUpload').hidden = false;
+        element('driveMainResult').hidden = false;
+        for (const id of ['driveCopyStatus', 'driveMainCopyStatus']) element(id).textContent = '';
+        for (const id of ['driveCopyFallback', 'driveMainCopyFallback']) element(id).hidden = true;
+    }
+    function legacyCopy(text) {
+        const previous = document.activeElement;
+        const input = document.createElement('textarea');
+        input.value = text;
+        input.readOnly = true;
+        input.style.position = 'fixed';
+        input.style.left = '-9999px';
+        const dialog = element('driveSettings');
+        (dialog.open ? dialog : document.body).appendChild(input);
+        try {
+            input.select();
+            if (!document.execCommand('copy')) throw new Error('Clipboard unavailable');
+        } finally { input.remove(); previous?.focus(); }
+    }
+    async function copyUploadLink(fromMain) {
+        if (!lastUploadUrl) return;
+        const url = lastUploadUrl;
+        try {
+            try {
+                if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+                await navigator.clipboard.writeText(url);
+            } catch { legacyCopy(url); }
+            for (const id of ['driveCopyStatus', 'driveMainCopyStatus']) element(id).textContent = '链接已复制';
+            for (const id of ['driveCopyFallback', 'driveMainCopyFallback']) element(id).hidden = true;
+        } catch {
+            for (const id of ['driveCopyStatus', 'driveMainCopyStatus']) element(id).textContent = '未能自动复制，请选中下方链接手动复制。';
+            for (const id of ['driveCopyFallback', 'driveMainCopyFallback']) {
+                element(id).value = url;
+                element(id).hidden = false;
+            }
+            const input = element(fromMain ? 'driveMainCopyFallback' : 'driveCopyFallback');
+            input.focus();
+            input.select();
+        }
     }
     async function runQueue() {
         while (true) {
@@ -401,6 +453,9 @@
             '填写 Google Cloud 中“Web 应用”类型的客户端 ID，无需 Client Secret。首次连接需加载 Google 授权组件。';
         element('driveSaveClient').hidden = extension;
         element('driveImportClient').addEventListener('click', () => element('driveConfigFile').click());
+        element('driveChangeConfig').addEventListener('click', () => element('driveConfigFile').click());
+        element('driveLastUpload').addEventListener('click', () => void copyUploadLink(false));
+        element('driveMainCopy').addEventListener('click', () => void copyUploadLink(true));
         element('driveConfigFile').addEventListener('change', async event => {
             const file = event.target.files?.[0];
             event.target.value = '';
@@ -418,7 +473,8 @@
                     save();
                 }
                 clientInput.value = id;
-                message('客户端 ID 已导入。其余配置字段未保存，请连接 Google Drive。');
+                render();
+                message('配置已就绪，点击“连接 Google Drive”继续。');
             } catch (error) { message(error.message, true); }
         });
         element('driveSaveClient').addEventListener('click', () => {
@@ -430,11 +486,12 @@
             if (settings.clientId !== value) disconnect();
             settings.clientId = value;
             save();
-            message('客户端 ID 已保存，请连接 Google Drive。');
+            render();
+            message('配置已就绪，点击“连接 Google Drive”继续。');
         });
         element('driveFormat').value = settings.format;
         element('driveFormat').addEventListener('change', event => {
-            settings.format = event.target.value === 'webm' ? 'webm' : 'mp3'; save();
+            settings.format = event.target.value === 'webm' ? 'webm' : 'mp3'; save(); render();
         });
         element('driveFolderName').value = settings.folderName;
         element('driveFolderName').addEventListener('change', event => {

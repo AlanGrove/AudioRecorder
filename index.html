@@ -827,38 +827,66 @@ button {
 </button>
 <dialog id="driveSettings" aria-labelledby="driveSettingsTitle">
     <div class="drive-header">
-        <div><h2 id="driveSettingsTitle">云端设置</h2><p class="drive-muted">将录音保存到你自己的 Google Drive。</p></div>
-        <button id="driveSettingsClose" type="button" aria-label="关闭设置">关闭</button>
+        <div><h2 id="driveSettingsTitle">云端备份</h2><p class="drive-muted">录音结束，自动保存到 Google Drive。</p></div>
+        <button id="driveSettingsClose" type="button" aria-label="关闭设置">×</button>
     </div>
-    <p id="driveAccount">尚未连接 Google Drive</p>
-    <label class="drive-field" for="driveClientId">Google OAuth 客户端 ID
-        <input id="driveClientId" type="text" placeholder="…apps.googleusercontent.com" autocomplete="off" spellcheck="false">
-    </label>
-    <p id="driveClientHelp" class="drive-muted"></p>
-    <button id="driveSaveClient" type="button">保存客户端 ID</button>
-    <button id="driveImportClient" type="button">导入 Google 配置 JSON</button>
+    <section id="driveSetup" class="drive-step" aria-label="首次配置">
+        <span class="drive-step-number" aria-hidden="true">1</span>
+        <div class="drive-step-body">
+            <h3>首次使用：导入配置</h3>
+            <p class="drive-muted">选择你下载的 Google 配置文件，只需设置一次。</p>
+            <button id="driveImportClient" type="button">选择配置文件</button>
+        </div>
+    </section>
     <input id="driveConfigFile" type="file" accept=".json,application/json" hidden>
-    <p class="drive-muted">配置文件只在本机读取；仅保存客户端 ID，其余字段不会保存或上传。</p>
-    <div class="drive-actions">
-        <button id="driveConnect" class="drive-primary" type="button">连接 Google Drive</button>
-        <button id="driveDisconnect" type="button" disabled>断开连接</button>
-    </div>
-    <label class="drive-auto" for="driveAutoUpload"><span>录音停止后自动上传</span><input id="driveAutoUpload" type="checkbox"></label>
-    <label class="drive-field" for="driveFormat">上传格式
-        <select id="driveFormat"><option value="mp3">MP3</option><option value="webm">WebM</option></select>
+    <section class="drive-step" aria-label="连接云盘">
+        <span id="driveConnectStep" class="drive-step-number" aria-hidden="true">2</span>
+        <div class="drive-step-body">
+            <h3>连接你的 Google Drive</h3>
+            <p id="driveAccount" class="drive-muted">尚未连接</p>
+            <button id="driveConnect" class="drive-primary" type="button">连接 Google Drive</button>
+        </div>
+    </section>
+    <label class="drive-auto" for="driveAutoUpload">
+        <span><strong>自动上传录音</strong><small id="driveAutoHelp">停止录音后自动保存 MP3。</small></span>
+        <input id="driveAutoUpload" type="checkbox" role="switch">
     </label>
-    <label class="drive-field" for="driveFolderName">云端文件夹名称
-        <input id="driveFolderName" type="text" value="Audio Recorder" maxlength="100">
-    </label>
-    <p class="drive-muted">自动创建本应用专用的文件夹；不会读取其他云盘文件。上传不会替代本地下载。</p>
     <div class="drive-actions">
         <button id="driveUploadCurrent" type="button" disabled>上传当前录音</button>
-        <button id="driveRetry" type="button" disabled>重试待上传</button>
+        <button id="driveRetry" type="button" disabled hidden>重试待上传</button>
     </div>
-    <p id="driveStatus" role="status" aria-live="polite">自动上传默认关闭。连接后可上传录音。</p>
-    <p id="driveQueue" class="drive-muted">没有待上传文件。</p>
-    <a id="driveLastUpload" target="_blank" rel="noopener noreferrer" hidden></a>
-    <p class="drive-muted">刷新页面或授权过期后需重新连接。关闭页面前请完成上传或下载备份。</p>
+    <p id="driveStatus" role="status" aria-live="polite" hidden></p>
+    <p id="driveQueue" class="drive-muted" hidden></p>
+    <section id="driveResult" class="drive-result" aria-label="最近上传" hidden>
+        <div class="drive-result-heading"><strong>最近上传</strong><a id="driveOpenUpload" target="_blank" rel="noopener noreferrer">打开文件 ↗</a></div>
+        <button id="driveLastUpload" class="drive-copy-link" type="button" aria-label="复制云端链接" hidden>
+            <span id="driveLastUploadName" class="drive-file-name"></span>
+            <span id="driveLastUploadUrl" class="drive-file-url"></span>
+            <span class="drive-copy-hint">点击复制链接</span>
+        </button>
+        <p id="driveCopyStatus" class="drive-copy-status" role="status" aria-live="polite"></p>
+        <input id="driveCopyFallback" type="text" aria-label="可手动复制的云端链接" readonly hidden>
+    </section>
+    <details id="driveAdvanced">
+        <summary>更多设置</summary>
+        <label class="drive-field" for="driveFormat">上传格式
+            <select id="driveFormat"><option value="mp3">MP3（推荐）</option><option value="webm">WebM</option></select>
+        </label>
+        <label class="drive-field" for="driveFolderName">云端文件夹
+            <input id="driveFolderName" type="text" value="Audio Recorder" maxlength="100">
+        </label>
+        <p class="drive-muted">会自动创建文件夹，本地下载照常保留。</p>
+        <label class="drive-field" for="driveClientId">手动填写客户端 ID
+            <input id="driveClientId" type="text" placeholder="…apps.googleusercontent.com" autocomplete="off" spellcheck="false">
+        </label>
+        <p id="driveClientHelp" class="drive-muted"></p>
+        <div class="drive-actions">
+            <button id="driveSaveClient" type="button">保存</button>
+            <button id="driveChangeConfig" type="button">更换配置文件</button>
+            <button id="driveDisconnect" type="button" disabled>断开连接</button>
+        </div>
+        <p class="drive-muted">配置文件只在本机读取，仅保存客户端 ID。刷新页面或授权到期后需重新连接。</p>
+    </details>
 </dialog>
 <div class="background-box">     
     <div class="recorder-title-row">
@@ -870,6 +898,15 @@ button {
         <button id="windowSizeToggle" class="window-size-toggle" type="button" aria-label="切换窗口大小" data-tooltip="切换窗口大小"><span class="window-size-icon" aria-hidden="true"></span></button>
     </div>
 <p id="driveSummary" role="status" aria-live="polite"></p>
+<section id="driveMainResult" aria-label="最近上传的录音" hidden>
+    <button id="driveMainCopy" class="drive-copy-link" type="button" aria-label="复制云端链接">
+        <span class="drive-main-label">已上传到云端 · 点击复制链接</span>
+        <span id="driveMainUploadName" class="drive-file-name"></span>
+        <span id="driveMainUploadUrl" class="drive-file-url"></span>
+    </button>
+    <p id="driveMainCopyStatus" class="drive-copy-status" role="status" aria-live="polite"></p>
+    <input id="driveMainCopyFallback" type="text" aria-label="可手动复制的云端链接" readonly hidden>
+</section>
 <div class="timer-row">
     <div class="record-control-wrap">
         <button id="toggle" type="button" aria-label="开始录音"><span class="record-icon" aria-hidden="true"></span></button>
