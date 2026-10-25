@@ -108,6 +108,15 @@ git push origin v1.23
 
 ## GitHub Pages 网站
 
+### 经典放大主页面（未发版调整）
+
+- 采用已确认的“经典放大”布局：64 px 录音按钮与 46 px 等宽时间码并排，下载及打开链接改为高 34 px 的小圆角按钮。
+- 顶部保留窗口切换与云端设置；波形下方放置自动下载和比特率。时间校正、时间码复制、命名规则、链接输入、预览及云端链接复制均保留。
+- 窄屏会适当缩小时间码；窗口切换尺寸同步适配新布局，避免放大后的主要控件被裁切。
+- 页面样式集中在 `recorder.css`；两个 HTML 入口保持一致。此项仅调整界面，沿用 1.23，不递增版本号、不生成 ZIP。
+
+### 网站入口与部署
+
 - 源码仓库：<https://github.com/AlanGrove/AudioRecorder>。
 - 网站地址：<https://alangrove.github.io/AudioRecorder/>。
 - `index.html` 直接显示录音界面，访问网站时地址保持为 `/AudioRecorder/`，不再跳转到 `AudioRecorder.html`；`.nojekyll` 用于按原样发布静态文件。

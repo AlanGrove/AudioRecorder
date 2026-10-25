@@ -48,6 +48,7 @@ $requiredFiles = @(
     "AudioRecorder.js",
     "google-drive.js",
     "google-drive.css",
+    "recorder.css",
     "AudioRecorderWorklet.js",
     "background.js",
     "lamejs.iife.js",

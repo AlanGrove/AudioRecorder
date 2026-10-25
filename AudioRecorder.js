@@ -17,10 +17,10 @@ let waveformAnimationId = null;
 let isFinalizingRecording = false;
 const AUTO_DOWNLOAD_STORAGE_KEY = 'audioRecorderAutoDownload';
 const RECORDER_WINDOW_SIZES = {
-    compact: { width: 396, height: 132 },
-    expanded: { width: 396, height: 398 }
+    compact: { width: 440, height: 330 },
+    expanded: { width: 440, height: 700 }
 };
-let isRecorderWindowExpanded = window.outerHeight > 260;
+let isRecorderWindowExpanded = window.outerHeight > 460;
 
 function applyRecorderWindowSize(size) {
     if (typeof chrome !== 'undefined' && chrome.windows?.getCurrent && chrome.windows?.update) {
@@ -870,6 +870,7 @@ document.getElementById('toggle').addEventListener('click', async () => {
     if (isRecording) {
         isFinalizingRecording = true;
         button.disabled = true;
+        document.getElementById('recorderStatus').textContent = '正在处理…';
         mediaRecorder.stop();
         stopTimer();
         button.classList.remove('recording');
@@ -992,6 +993,7 @@ document.getElementById('toggle').addEventListener('click', async () => {
                     } finally {
                         isFinalizingRecording = false;
                         button.disabled = false;
+                        document.getElementById('recorderStatus').textContent = '准备录音';
                     }
                 };
 
@@ -999,6 +1001,7 @@ document.getElementById('toggle').addEventListener('click', async () => {
                 startTimer();
                 button.classList.add('recording');
                 button.setAttribute('aria-label', '停止录音');
+                document.getElementById('recorderStatus').textContent = '录音中';
                 window.addEventListener('beforeunload', beforeUnloadListener); // 添加beforeunload事件监听器
                 document.title = '🔴⏰正在录音中...';  // 更新网页标题为录音中
             })

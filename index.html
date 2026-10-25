@@ -820,11 +820,9 @@ button {
 
   <link rel="stylesheet" href="shared/module-switcher.css">
   <link rel="stylesheet" href="google-drive.css">
+  <link rel="stylesheet" href="recorder.css">
 </head>
 <body>
-<button id="driveSettingsButton" type="button" aria-label="设置" title="设置" aria-haspopup="dialog" aria-controls="driveSettings">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m9.4 3-.6 2.2-2 .9-2-.8L2.7 9l1.7 1.5v2.3L2.7 14l2.1 3.7 2-.7 2 .9.6 2.1h4.2l.6-2.1 2-.9 2 .7 2.1-3.7-1.7-1.3v-2.3L20.3 9l-2.1-3.7-2 .8-2-.9-.6-2.2z"/><circle cx="11.5" cy="11.5" r="3.2"/></svg>
-</button>
 <dialog id="driveSettings" aria-labelledby="driveSettingsTitle">
     <div class="drive-header">
         <div><h2 id="driveSettingsTitle">云端备份</h2><p class="drive-muted">录音结束，自动保存到 Google Drive。</p></div>
@@ -890,23 +888,14 @@ button {
 </dialog>
 <div class="background-box">     
     <div class="recorder-title-row">
-        <h1>音频录制器 1.23</h1>
-        <label class="auto-download-switch" data-tooltip="自动下载 MP3">
-<input type="checkbox" id="autoDownloadToggle" checked>
-            <span class="switch-track" aria-hidden="true"></span>
-        </label>
+        <h1>音频录制器 <span class="recorder-version">1.23</span></h1>
+        <div class="recorder-header-tools">
         <button id="windowSizeToggle" class="window-size-toggle" type="button" aria-label="切换窗口大小" data-tooltip="切换窗口大小"><span class="window-size-icon" aria-hidden="true"></span></button>
+        <button id="driveSettingsButton" type="button" aria-label="设置" title="设置" aria-haspopup="dialog" aria-controls="driveSettings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m9.4 3-.6 2.2-2 .9-2-.8L2.7 9l1.7 1.5v2.3L2.7 14l2.1 3.7 2-.7 2 .9.6 2.1h4.2l.6-2.1 2-.9 2 .7 2.1-3.7-1.7-1.3v-2.3L20.3 9l-2.1-3.7-2 .8-2-.9-.6-2.2z"/><circle cx="11.5" cy="11.5" r="3.2"/></svg>
+        </button>
+        </div>
     </div>
-<p id="driveSummary" role="status" aria-live="polite"></p>
-<section id="driveMainResult" aria-label="最近上传的录音" hidden>
-    <button id="driveMainCopy" class="drive-copy-link" type="button" aria-label="复制云端链接">
-        <span class="drive-main-label">已上传到云端 · 点击复制链接</span>
-        <span id="driveMainUploadName" class="drive-file-name"></span>
-        <span id="driveMainUploadUrl" class="drive-file-url"></span>
-    </button>
-    <p id="driveMainCopyStatus" class="drive-copy-status" role="status" aria-live="polite"></p>
-    <input id="driveMainCopyFallback" type="text" aria-label="可手动复制的云端链接" readonly hidden>
-</section>
 <div class="timer-row">
     <div class="record-control-wrap">
         <button id="toggle" type="button" aria-label="开始录音"><span class="record-icon" aria-hidden="true"></span></button>
@@ -925,10 +914,11 @@ button {
             </div>
         </div>
     </div>
-    <p class="timer-line">
-        <span id="timer" style="font-size: 30px;">00:00:00</span>
-        <input type="number" id="timeAdjust" style="font-size: 12px; width: 36px; margin-left: 10px;" placeholder="±秒">
-    </p>
+    <div class="recorder-clock">
+        <p class="recorder-state"><span class="recorder-state-dot" aria-hidden="true"></span><span id="recorderStatus" role="status" aria-live="polite">准备录音</span></p>
+        <p class="timer-line"><span id="timer" title="点击复制时间码，双击选择复制样式">00:00:00</span></p>
+        <label class="recorder-time-adjust" for="timeAdjust">时间校正 <input type="number" id="timeAdjust" placeholder="±秒" aria-label="时间校正秒数"></label>
+    </div>
 </div>
 
 
@@ -947,7 +937,12 @@ button {
     <canvas id="waveform"></canvas>
 
     
-    <div>
+    <div class="recorder-preferences">
+        <label class="auto-download-switch" data-tooltip="自动下载 MP3">
+            <input type="checkbox" id="autoDownloadToggle" aria-label="自动下载 MP3" checked>
+            <span class="switch-track" aria-hidden="true"></span><span class="auto-download-label">自动下载 MP3</span>
+        </label>
+        <div class="recorder-quality">
         <label for="bitrate">选择比特率：</label>
         <select id="bitrate">
             <option value="8">8 kbps</option>.
@@ -968,6 +963,7 @@ button {
             <option value="256">256 kbps</option>
             <option value="320">320 kbps</option>
         </select>
+        </div>
     </div>
 
         <section class="filename-builder" aria-label="录音文件命名规则">
@@ -993,9 +989,9 @@ button {
         </div>
     </section>
     <div class="controls">
-        <button id="downloadWEBM">下载 WEBM</button>
-        <button id="downloadMP3" disabled>下载 MP3</button>
-        <button id="cloudLinksButton">打开链接</button>
+        <button id="downloadWEBM" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m-3-3 3 3 3-3M4 13v3h12v-3"/></svg><span>下载 WEBM</span></button>
+        <button id="downloadMP3" type="button" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m-3-3 3 3 3-3M4 13v3h12v-3"/></svg><span>下载 MP3</span></button>
+        <button id="cloudLinksButton" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8 7 2-2a3.5 3.5 0 0 1 5 5l-2 2m-1 1-2 2a3.5 3.5 0 0 1-5-5l2-2m0 5 6-6"/></svg><span>打开链接</span></button>
 
     </div>
     <div>
@@ -1005,7 +1001,18 @@ button {
 	"></textarea>
     </div>
 
+    <p id="driveSummary" role="status" aria-live="polite"></p>
+    <section id="driveMainResult" aria-label="最近上传的录音" hidden>
+        <button id="driveMainCopy" class="drive-copy-link" type="button" aria-label="复制云端链接">
+            <span class="drive-main-label">已上传到云端 · 点击复制链接</span>
+            <span id="driveMainUploadName" class="drive-file-name"></span>
+            <span id="driveMainUploadUrl" class="drive-file-url"></span>
+        </button>
+        <p id="driveMainCopyStatus" class="drive-copy-status" role="status" aria-live="polite"></p>
+        <input id="driveMainCopyFallback" type="text" aria-label="可手动复制的云端链接" readonly hidden>
+    </section>
     <audio id="audioPlayback" controls></audio>
+</div>
 <script src="google-drive.js"></script>
 <script src="AudioRecorder.js"></script>
     <script src="lamejs.iife.js"></script>
