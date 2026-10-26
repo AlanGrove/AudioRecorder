@@ -5,6 +5,9 @@ if (!base || new URL(base).protocol !== 'https:') throw new Error('Provide the d
 const headers = { Origin: 'https://alangrove.github.io', 'X-Recorder-Request': '1' };
 let cookie = '';
 try {
+    const health = await fetch(base + '/auth/health', { headers, redirect: 'error' });
+    assert.equal(health.status, 200, 'Worker encryption health');
+    assert.equal((await health.json()).ready, true);
     const start = await fetch(base + '/auth/start', { method: 'POST', headers, redirect: 'error' });
     assert.equal(start.status, 200, 'OAuth start endpoint');
     assert.equal(start.headers.get('Access-Control-Allow-Origin'), headers.Origin);

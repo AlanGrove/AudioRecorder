@@ -57,6 +57,11 @@
         authorization_denied: 'Google 授权已取消，请连接并允许保存本应用创建的文件。',
         missing_offline_scope: '未取得完整上传授权，请重新连接并勾选保存本应用创建的 Drive 文件。',
         profile_unavailable: '无法读取云盘账号，请确认项目已启用 Google Drive API，并稍后重连。',
+        callback_token_exchange_failed: 'Google 授权凭据交换失败（token_exchange），请联系维护者检查授权服务。',
+        callback_profile_read_failed: 'Google 账号资料读取失败（profile_read），请稍后重试。',
+        callback_session_read_failed: '授权会话读取失败（session_read），请稍后重试。',
+        callback_session_write_failed: '授权会话保存失败（session_write），请稍后重试。',
+        callback_encryption_failed: '授权凭据加密失败（encryption），请联系维护者检查服务端密钥。',
         google_unavailable: 'Google 授权服务暂时不可用，请稍后重试。'
     };
     async function backendRequest(path, method = 'GET') {

@@ -183,5 +183,7 @@ Chrome 插件使用官方 `chrome.identity.getAuthToken`，不会加载远程授
 
 首次授权等待窗口为 9 分钟，并提示在 Google 窗口完成授权。后端在交换凭据和读取资料期间保持“处理中”，完成后才报告成功或失败，避免网页提前关闭授权窗口；交错回调不会用旧账号覆盖新连接。
 
+部署检查还通过受来源限制的 `/auth/health` 验证服务端加密/解密往返，只返回健康状态。授权失败时显示失败步骤，便于排查凭据交换、资料读取或会话保存；不会显示或记录授权码、访问/刷新凭据或 Client Secret。
+
 验证方法：运行 `node scripts/test-google-drive.cjs`（模拟测试，不访问真实云盘）及 `scripts/validate-release.ps1 -ExpectedVersion 1.23`。配置真实 OAuth 后，测试手动上传、自动上传开关、错误重试、本地下载，并核对云盘文件名、大小和播放。
 

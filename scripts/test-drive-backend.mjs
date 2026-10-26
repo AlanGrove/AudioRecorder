@@ -23,11 +23,12 @@ function harness() {
         }
     };
     let cookie = '';
-    const state = { invalidGrant: false, missingScope: false, holdRefresh: null, holdExchange: null, failGoogle: false };
+    const state = { invalidGrant: false, missingScope: false, holdRefresh: null, holdExchange: null, failGoogle: false, throwGoogle: false };
     const fetchGoogle = async (url, options) => {
         network.push({ url, options });
         assert.equal(options.redirect, 'error');
         if (url === 'https://oauth2.googleapis.com/token') {
+            if (state.throwGoogle) throw new TypeError('simulated transport failure');
             const body = options.body;
             assert.equal(body.get('client_secret'), env.GOOGLE_CLIENT_SECRET);
             if (state.failGoogle) return Response.json({ error: 'temporarily_unavailable' }, { status: 503 });
@@ -78,6 +79,15 @@ test('Cloudflare OAuth 后端', async t => {
             assert.equal((await h.request('/auth/start', 'POST', { headers: { Origin: 'https://evil.invalid' } })).status, 403);
             assert.equal((await h.request('/auth/start', 'POST', { headers: { 'X-Recorder-Request': '' } })).status, 403);
             assert.equal((await h.request('/auth/token', 'POST')).status, 401);
+            assert.equal(h.network.length, 0);
+        });
+        await t.test('健康检查验证实际加密往返，不泄露密钥且拒绝格式损坏的密钥', async () => {
+            const h = harness(); globalThis.fetch = h.fetchGoogle;
+            const healthy = await h.request('/auth/health');
+            assert.equal(healthy.status, 200); assert.equal((await healthy.json()).ready, true);
+            h.env.TOKEN_ENCRYPTION_KEY = 'invalid';
+            const broken = await h.request('/auth/health');
+            assert.equal(broken.status, 503); assert.equal((await broken.json()).error, 'crypto_unavailable');
             assert.equal(h.network.length, 0);
         });
         await t.test('CORS 仅允许指定来源，Cookie 使用 HttpOnly Secure Partitioned', async () => {
@@ -154,6 +164,14 @@ test('Cloudflare OAuth 后端', async t => {
             const { data } = await h.start();
             assert.equal((await h.callback(data.flow)).status, 400);
             assert.equal((await (await h.request('/auth/session')).json()).connected, false);
+        });
+        await t.test('回调交换失败会结束处理中状态并报告不含凭据的失败步骤', async () => {
+            const h = harness(); globalThis.fetch = h.fetchGoogle; h.state.throwGoogle = true;
+            const { data } = await h.start();
+            assert.equal((await h.callback(data.flow)).status, 503);
+            const status = await (await h.request('/auth/session')).json();
+            assert.equal(status.pending, false); assert.equal(status.error, 'callback_token_exchange_failed');
+            assert.ok(!JSON.stringify(status).includes('test-only-secret'));
         });
         await t.test('过期 access token 自动刷新，并发刷新只调用一次 Google', async () => {
             const h = harness(); globalThis.fetch = h.fetchGoogle; await h.authorize();

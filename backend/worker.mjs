@@ -89,10 +89,17 @@ export default {
                 status: 204, headers: { 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
                     'Access-Control-Allow-Headers': 'X-Recorder-Request, Content-Type', 'Access-Control-Max-Age': '600' }
             }));
-            const paths = { '/auth/start': 'POST', '/auth/session': 'GET', '/auth/token': 'POST', '/auth/logout': 'POST' };
+            const paths = { '/auth/start': 'POST', '/auth/session': 'GET', '/auth/token': 'POST', '/auth/logout': 'POST', '/auth/health': 'GET' };
             if (!paths[url.pathname]) return respond(fail('not_found', 404));
             if (request.method !== paths[url.pathname]) return respond(fail('method_not_allowed', 405));
             if (request.headers.get('X-Recorder-Request') !== '1') return respond(fail('request_denied', 403));
+            if (url.pathname === '/auth/health') {
+                try {
+                    const probe = await seal(env, { ready: true }, 'health');
+                    if (!(await unseal(env, probe, 'health')).ready) throw new Error();
+                    return respond(json({ ready: true }));
+                } catch { return respond(fail('crypto_unavailable', 503)); }
+            }
             let secret = (request.headers.get('Cookie') || '').split(';').map(p => p.trim())
                 .find(p => p.startsWith(COOKIE + '='))?.slice(COOKIE.length + 1);
             if (!/^[\w-]{43}$/.test(secret || '')) secret = '';
@@ -173,16 +180,19 @@ export class DriveSession {
                     return fail(code, status);
                 };
                 if (body.denied || !body.code) return callbackFailure('authorization_denied');
+                let callbackStage = 'token_exchange';
                 try {
                     const tokens = await googleToken(this.env, { grant_type: 'authorization_code', code: body.code,
                         redirect_uri: pending.redirectUri, code_verifier: pending.verifier });
                     if (!(tokens.scope || '').split(' ').includes(SCOPE) || !tokens.refresh_token) return callbackFailure('missing_offline_scope');
+                    callbackStage = 'profile_read';
                     const response = await fetch('https://www.googleapis.com/drive/v3/about?fields=user(permissionId,displayName,emailAddress,photoLink)', {
                         headers: { Authorization: 'Bearer ' + tokens.access_token }, redirect: 'error'
                     });
                     if (!response.ok) return callbackFailure('profile_unavailable', 502);
                     const profile = (await response.json()).user;
                     if (!profile?.permissionId) return callbackFailure('profile_unavailable', 502);
+                    callbackStage = 'session_read';
                     const current = await this.read();
                     if (!current || current.version !== callbackVersion || current.pending ||
                         current.processing?.state !== body.state) return fail('session_changed', 409);
@@ -193,12 +203,14 @@ export class DriveSession {
                     session.reauthorize = false;
                     session.error = '';
                     session.processing = null;
+                    callbackStage = 'encryption';
                     session.tokens = await seal(this.env, { access: tokens.access_token, refresh: tokens.refresh_token,
                         expires: Date.now() + Math.max(0, Number(tokens.expires_in || 3600) - 90) * 1000 }, session.id);
+                    callbackStage = 'session_write';
                     await this.ctx.storage.put('session', session);
                     return json({ connected: true });
                 } catch (error) {
-                    return callbackFailure(['reauthorize', 'google_unavailable'].includes(error.message) ? error.message : 'backend_unavailable',
+                    return callbackFailure(['reauthorize', 'google_unavailable'].includes(error.message) ? error.message : 'callback_' + callbackStage + '_failed',
                         error.status || 503);
                 }
             }
