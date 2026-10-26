@@ -1,3 +1,3 @@
 // Public service address only. Never put Google Client Secret or tokens here.
-// After deploying backend/worker.mjs, set the HTTPS Worker root URL below.
-window.AudioRecorderDriveBackendUrl = '';
+// Public OAuth broker; refresh credentials are stored only in its encrypted server session.
+window.AudioRecorderDriveBackendUrl = 'https://audio-recorder-drive.audio-recorder-drive-backend.workers.dev';

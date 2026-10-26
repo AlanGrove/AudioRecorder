@@ -130,7 +130,7 @@ git push origin v1.23
 
 网页设置：启用 Google Cloud 项目的 Drive API，配置同意屏幕及 `drive.file` 范围；测试模式下添加测试用户。创建 **Web 应用** OAuth 客户端，在“已获授权的 JavaScript 来源”加入 `https://alangrove.github.io`（不带路径）。
 
-点击右上角设置 → 导入 Google 配置 JSON（或填写客户端 ID）→ 连接 Google Drive。首次加载 Google 授权组件后，按提示再次点击连接。完成 Google 授权后选择 MP3 / WebM、文件夹名称，并开启自动上传。也可点击“上传当前录音”。
+当前发布网页已配置保持连接服务，点击右上角设置 → 连接 Google Drive → 完成首次 Google 授权即可，不需要再导入 JSON。选择 MP3 / WebM、文件夹名称，并开启自动上传。也可点击“上传当前录音”。自行部署且未配置后端时，仍可导入 Google 配置 JSON（或填写客户端 ID）使用临时授权；首次加载 Google 授权组件后需按提示再次点击连接。
 
 设置面板优先显示“导入配置 → 连接云盘 → 自动上传”。配置完成后，首次导入步骤会自动隐藏；格式、文件夹、手动客户端 ID、更换配置和断开连接放在默认折叠的“更多设置”中。
 
@@ -177,7 +177,9 @@ Chrome 插件使用官方 `chrome.identity.getAuthToken`，不会加载远程授
 
 验证命令：`node --test scripts/test-google-drive.cjs scripts/test-drive-backend.mjs`。覆盖连接恢复、头像用户名、静默授权、上传队列、断开失败重试、OAuth state/PKCE、凭据加密、自动续期、撤销、并发刷新及会话到期。真实 Google OAuth 和 Cloudflare Cookie 恢复仍需在已配置的部署环境完成一次端到端验证。本次没有递增 1.23 版本号，没有打包 ZIP。
 
-部署进度（2026-10-26，未发版）：授权服务已部署到 `https://audio-recorder-drive.audio-recorder-drive-backend.workers.dev`，Durable Objects、Client Secret 和加密密钥已通过 Cloudflare 绑定/Secret 配置。`node scripts/check-drive-deployment.mjs https://audio-recorder-drive.audio-recorder-drive-backend.workers.dev` 已验证线上 HTTPS、来源限制、分区 Cookie 设置、回调地址和空会话创建/清除，不会授权 Google 或上传音频。新 Google Web OAuth 客户端及回调配置仍待完成，暂不把全站切换到此后端；`drive-backend-config.js` 保持空值以保留原临时连接方式。完成真实授权验证后再填入该公开服务地址。
+部署配置（2026-10-26，未发版）：授权服务已部署到 `https://audio-recorder-drive.audio-recorder-drive-backend.workers.dev`，Durable Objects、Client Secret 和加密密钥已通过 Cloudflare 绑定/Secret 配置。使用可管理项目 `audiorecorder-20260728` 中专用的 Web OAuth 客户端，已配置网页来源、后端回调，确认 Drive API 已启用。`drive-backend-config.js` 已设置公开服务地址，网页默认使用保持连接服务。首次使用须点击“连接 Google Drive”并完成 Google 授权；之后在 Cookie 会话有效且 Google 未撤销权限时自动恢复和续期，不再导入 JSON。
+
+`node scripts/check-drive-deployment.mjs https://audio-recorder-drive.audio-recorder-drive-backend.workers.dev` 已验证线上 HTTPS、来源限制、分区 Cookie 设置、回调地址和空会话创建/清除，不会授权 Google 或上传音频。自动化测试与运行时检查通过不等于真实账号授权验证；更换部署或 OAuth 配置后，还应实际连接、刷新/重开页面，并短录音检查上传与复制链接。
 
 验证方法：运行 `node scripts/test-google-drive.cjs`（模拟测试，不访问真实云盘）及 `scripts/validate-release.ps1 -ExpectedVersion 1.23`。配置真实 OAuth 后，测试手动上传、自动上传开关、错误重试、本地下载，并核对云盘文件名、大小和播放。
 
