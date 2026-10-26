@@ -136,6 +136,7 @@ export class DriveSession {
                 session ||= { id: body.id, expires: Date.now() + SESSION_MS, version: random() };
                 session.pending = { state: body.id + '.' + random(), verifier: random(),
                     redirectUri: body.redirectUri, expires: Date.now() + FLOW_MS };
+                session.processing = null;
                 session.error = '';
                 await this.ctx.storage.put('session', session);
                 await this.ctx.storage.setAlarm(session.expires);
@@ -158,34 +159,54 @@ export class DriveSession {
                 if (!pending || pending.state !== body.state || pending.expires <= Date.now()) return fail('invalid_state');
                 // Consume the state before the outbound token exchange; replay is rejected.
                 session.pending = null;
-                session.error = 'authorization_failed';
-                await this.ctx.storage.put('session', session);
-                if (body.denied || !body.code) return fail('authorization_denied');
-                const tokens = await googleToken(this.env, { grant_type: 'authorization_code', code: body.code,
-                    redirect_uri: pending.redirectUri, code_verifier: pending.verifier });
-                if (!(tokens.scope || '').split(' ').includes(SCOPE) || !tokens.refresh_token) return fail('missing_offline_scope');
-                const response = await fetch('https://www.googleapis.com/drive/v3/about?fields=user(permissionId,displayName,emailAddress,photoLink)', {
-                    headers: { Authorization: 'Bearer ' + tokens.access_token }, redirect: 'error'
-                });
-                if (!response.ok) return fail('profile_unavailable', 502);
-                const profile = (await response.json()).user;
-                if (!profile?.permissionId) return fail('profile_unavailable', 502);
-                const current = await this.read();
-                if (!current || current.version !== session.version || current.pending) return fail('session_changed', 409);
-                session = current;
-                session.version = random();
-                session.activeFlow = body.state;
-                session.profile = profile;
-                session.reauthorize = false;
+                session.processing = { state: body.state, expires: Date.now() + 120000 };
                 session.error = '';
-                session.tokens = await seal(this.env, { access: tokens.access_token, refresh: tokens.refresh_token,
-                    expires: Date.now() + Math.max(0, Number(tokens.expires_in || 3600) - 90) * 1000 }, session.id);
                 await this.ctx.storage.put('session', session);
-                return json({ connected: true });
+                const callbackVersion = session.version;
+                const callbackFailure = async (code, status = 400) => {
+                    const current = await this.read();
+                    if (current?.version === callbackVersion && current.processing?.state === body.state) {
+                        current.processing = null;
+                        current.error = code;
+                        await this.ctx.storage.put('session', current);
+                    }
+                    return fail(code, status);
+                };
+                if (body.denied || !body.code) return callbackFailure('authorization_denied');
+                try {
+                    const tokens = await googleToken(this.env, { grant_type: 'authorization_code', code: body.code,
+                        redirect_uri: pending.redirectUri, code_verifier: pending.verifier });
+                    if (!(tokens.scope || '').split(' ').includes(SCOPE) || !tokens.refresh_token) return callbackFailure('missing_offline_scope');
+                    const response = await fetch('https://www.googleapis.com/drive/v3/about?fields=user(permissionId,displayName,emailAddress,photoLink)', {
+                        headers: { Authorization: 'Bearer ' + tokens.access_token }, redirect: 'error'
+                    });
+                    if (!response.ok) return callbackFailure('profile_unavailable', 502);
+                    const profile = (await response.json()).user;
+                    if (!profile?.permissionId) return callbackFailure('profile_unavailable', 502);
+                    const current = await this.read();
+                    if (!current || current.version !== callbackVersion || current.pending ||
+                        current.processing?.state !== body.state) return fail('session_changed', 409);
+                    session = current;
+                    session.version = random();
+                    session.activeFlow = body.state;
+                    session.profile = profile;
+                    session.reauthorize = false;
+                    session.error = '';
+                    session.processing = null;
+                    session.tokens = await seal(this.env, { access: tokens.access_token, refresh: tokens.refresh_token,
+                        expires: Date.now() + Math.max(0, Number(tokens.expires_in || 3600) - 90) * 1000 }, session.id);
+                    await this.ctx.storage.put('session', session);
+                    return json({ connected: true });
+                } catch (error) {
+                    return callbackFailure(['reauthorize', 'google_unavailable'].includes(error.message) ? error.message : 'backend_unavailable',
+                        error.status || 503);
+                }
             }
             if (path === '/auth/session') return json({ connected: Boolean(session.tokens && !session.reauthorize),
                 profile: session.profile || null, flow: session.activeFlow || '',
-                pending: Boolean(session.pending && session.pending.expires > Date.now()), error: session.error || '',
+                pending: Boolean((session.pending && session.pending.expires > Date.now()) ||
+                    (session.processing && session.processing.expires > Date.now())),
+                error: session.error || (session.processing && session.processing.expires <= Date.now() ? 'authorization_failed' : ''),
                 reauthorize: session.reauthorize === true });
             if (path === '/auth/token') {
                 if (!session.tokens || session.reauthorize) return fail(session.reauthorize ? 'reauthorize' : 'no_session', 401);

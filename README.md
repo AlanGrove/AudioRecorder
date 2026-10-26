@@ -181,5 +181,7 @@ Chrome 插件使用官方 `chrome.identity.getAuthToken`，不会加载远程授
 
 `node scripts/check-drive-deployment.mjs https://audio-recorder-drive.audio-recorder-drive-backend.workers.dev` 已验证线上 HTTPS、来源限制、分区 Cookie 设置、回调地址和空会话创建/清除，不会授权 Google 或上传音频。自动化测试与运行时检查通过不等于真实账号授权验证；更换部署或 OAuth 配置后，还应实际连接、刷新/重开页面，并短录音检查上传与复制链接。
 
+首次授权等待窗口为 9 分钟，并提示在 Google 窗口完成授权。后端在交换凭据和读取资料期间保持“处理中”，完成后才报告成功或失败，避免网页提前关闭授权窗口；交错回调不会用旧账号覆盖新连接。
+
 验证方法：运行 `node scripts/test-google-drive.cjs`（模拟测试，不访问真实云盘）及 `scripts/validate-release.ps1 -ExpectedVersion 1.23`。配置真实 OAuth 后，测试手动上传、自动上传开关、错误重试、本地下载，并核对云盘文件名、大小和播放。
 

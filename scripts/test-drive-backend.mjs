@@ -23,7 +23,7 @@ function harness() {
         }
     };
     let cookie = '';
-    const state = { invalidGrant: false, missingScope: false, holdRefresh: null, failGoogle: false };
+    const state = { invalidGrant: false, missingScope: false, holdRefresh: null, holdExchange: null, failGoogle: false };
     const fetchGoogle = async (url, options) => {
         network.push({ url, options });
         assert.equal(options.redirect, 'error');
@@ -38,6 +38,7 @@ function harness() {
                 return Response.json({ access_token: 'renewed-access', expires_in: 3600 });
             }
             assert.ok(body.get('code_verifier'));
+            if (state.holdExchange) await state.holdExchange;
             return Response.json({ access_token: 'test-access', refresh_token: 'test-refresh', expires_in: 1,
                 scope: state.missingScope ? '' : SCOPE });
         }
@@ -107,6 +108,35 @@ test('Cloudflare OAuth 后端', async t => {
             const stored = JSON.stringify([...h.objects.values()].map(x => [...x.values]));
             assert.ok(!stored.includes('test-access') && !stored.includes('test-refresh'));
             assert.ok(!JSON.stringify(data).includes('test-access') && !JSON.stringify(data).includes('test-refresh'));
+        });
+        await t.test('回调换取凭据期间保持处理中，轮询不会误判失败，state 仍只能消费一次', async () => {
+            const h = harness(); globalThis.fetch = h.fetchGoogle;
+            const { data } = await h.start();
+            let release; h.state.holdExchange = new Promise(resolve => { release = resolve; });
+            const processing = h.callback(data.flow);
+            await new Promise(resolve => setImmediate(resolve));
+            const waiting = await (await h.request('/auth/session')).json();
+            assert.equal(waiting.pending, true); assert.equal(waiting.error, ''); assert.equal(waiting.connected, false);
+            assert.equal((await h.callback(data.flow)).status, 400);
+            release(); assert.equal((await processing).status, 200);
+            const ready = await (await h.request('/auth/session')).json();
+            assert.equal(ready.pending, false); assert.equal(ready.error, ''); assert.equal(ready.connected, true);
+        });
+        await t.test('两个授权回调交错时，旧回调不能覆盖正在处理的新账号连接', async () => {
+            const h = harness(); globalThis.fetch = h.fetchGoogle;
+            const first = await h.start();
+            let releaseFirst; h.state.holdExchange = new Promise(resolve => { releaseFirst = resolve; });
+            const firstCallback = h.callback(first.data.flow);
+            await new Promise(resolve => setImmediate(resolve));
+            const second = await h.start();
+            let releaseSecond; h.state.holdExchange = new Promise(resolve => { releaseSecond = resolve; });
+            const secondCallback = h.callback(second.data.flow);
+            await new Promise(resolve => setImmediate(resolve));
+            releaseFirst(); assert.equal((await firstCallback).status, 409);
+            const waiting = await (await h.request('/auth/session')).json();
+            assert.equal(waiting.pending, true); assert.equal(waiting.connected, false); assert.equal(waiting.error, '');
+            releaseSecond(); assert.equal((await secondCallback).status, 200);
+            assert.equal((await (await h.request('/auth/session')).json()).flow, second.data.flow);
         });
         await t.test('无效、重放、过期和取消的 OAuth state 不能授权', async () => {
             const h = harness(); globalThis.fetch = h.fetchGoogle;

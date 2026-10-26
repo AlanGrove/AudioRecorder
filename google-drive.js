@@ -54,6 +54,9 @@
         backend_not_configured: '授权服务尚未配置完成，请按 README 设置服务端密钥。',
         backend_unavailable: '授权服务暂时不可用，请检查服务配置或稍后重试。',
         authorization_failed: 'Google 授权未完成，请重新连接。',
+        authorization_denied: 'Google 授权已取消，请连接并允许保存本应用创建的文件。',
+        missing_offline_scope: '未取得完整上传授权，请重新连接并勾选保存本应用创建的 Drive 文件。',
+        profile_unavailable: '无法读取云盘账号，请确认项目已启用 Google Drive API，并稍后重连。',
         google_unavailable: 'Google 授权服务暂时不可用，请稍后重试。'
     };
     async function backendRequest(path, method = 'GET') {
