@@ -166,7 +166,7 @@
         element('driveAutoUpload').checked = settings.autoUpload;
         element('driveConnect').disabled = authorizing || disconnecting || Boolean(pumping) || connected();
         element('driveConnect').textContent = authorizing ? '正在连接…' : connected() ? '已连接' : '连接 Google Drive';
-        element('driveSwitchAccount').hidden = !connected();
+        element('driveSwitchAccount').hidden = !connected() || extension;
         element('driveSwitchAccount').disabled = authorizing || disconnecting || Boolean(pumping);
         element('driveDisconnect').disabled = disconnecting || (!token && !authorizing && !settings.rememberConnection && !settings.disconnectPending);
         element('driveUploadCurrent').disabled = !currentRecording || !connected() || Boolean(pumping);
@@ -266,7 +266,7 @@
         }
         return sdkPromise;
     }
-    function webToken() {
+    function webToken(switchAccount = false) {
         return new Promise((resolve, reject) => {
             const client = google.accounts.oauth2.initTokenClient({
                 client_id: settings.clientId,
@@ -280,7 +280,7 @@
                 },
                 error_callback: () => reject(new Error('授权窗口已关闭或被浏览器拦截，请再次点击连接。'))
             });
-            client.requestAccessToken({ prompt: settings.rememberConnection ? '' : 'select_account' });
+            client.requestAccessToken({ prompt: !switchAccount && settings.rememberConnection ? '' : 'select_account' });
         });
     }
     async function applyAuthorization(result, epoch) {
@@ -330,7 +330,7 @@
         })();
         return renewing;
     }
-    async function connect() {
+    async function connect(switchAccount = false) {
         if (authorizing || disconnecting || pumping) return;
         if (extension && !manifestClient) {
             message('插件尚未配置 Google OAuth 客户端 ID，请按 README 的插件配置步骤设置后重新加载。', true);
@@ -356,7 +356,7 @@
         const epoch = ++authEpoch;
         render();
         try {
-            const result = extension ? await nativeToken(true) : backendUrl() ? await backendLogin() : await webToken();
+            const result = extension ? await nativeToken(true) : backendUrl() ? await backendLogin() : await webToken(switchAccount);
             await applyAuthorization(result, epoch);
             if (epoch !== authEpoch) return;
             message('Google Drive 已连接。可开启自动上传，或上传当前录音。');
@@ -708,7 +708,7 @@
             message(settings.autoUpload ? '已开启：之后每次录音停止都会自动上传。' : '已关闭自动上传，已排队的上传会继续完成。');
         });
         element('driveConnect').addEventListener('click', () => void connect());
-        element('driveSwitchAccount').addEventListener('click', () => void connect());
+        element('driveSwitchAccount').addEventListener('click', () => void connect(true));
         element('driveDisconnect').addEventListener('click', () => void disconnect());
         element('driveUploadCurrent').addEventListener('click', () => void queueCurrent());
         element('driveRetry').addEventListener('click', () => {

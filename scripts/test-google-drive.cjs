@@ -25,6 +25,14 @@ test('拒绝非 Google 头像地址且姓名作为纯文本显示', async () => 
     assert.equal(h.el('driveAvatar').getAttribute('src'), null);
 });
 
+test('临时连接记住账号选择，明确切换账号时才重新展示账号选择器', async () => {
+    const h = harness(); await h.connect();
+    assert.equal(h.authCalls[0].prompt, 'select_account');
+    await h.fire('driveSwitchAccount');
+    await h.until(() => h.authCalls.length === 2 && h.el('driveConnect').textContent === '已连接');
+    assert.equal(h.authCalls[1].prompt, 'select_account');
+});
+
 test('后端会话自动恢复，刷新后无需弹窗，授权仅保留在内存', async () => {
     const h = harness({ backend: true, backendSession: true });
     await h.until(() => h.el('driveConnect').textContent === '已连接');
