@@ -188,7 +188,7 @@ export class DriveSession {
                 pending: Boolean(session.pending && session.pending.expires > Date.now()), error: session.error || '',
                 reauthorize: session.reauthorize === true });
             if (path === '/auth/token') {
-                if (!session.tokens || session.reauthorize) return fail('reauthorize', 401);
+                if (!session.tokens || session.reauthorize) return fail(session.reauthorize ? 'reauthorize' : 'no_session', 401);
                 if (!this.refreshing) this.refreshing = this.freshToken(session, body.forceRefresh).finally(() => { this.refreshing = null; });
                 return json(await this.refreshing);
             }

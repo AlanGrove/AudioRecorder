@@ -82,6 +82,9 @@ test('Cloudflare OAuth 后端', async t => {
         await t.test('CORS 仅允许指定来源，Cookie 使用 HttpOnly Secure Partitioned', async () => {
             const h = harness(); globalThis.fetch = h.fetchGoogle;
             const { response, data } = await h.start();
+            const pendingToken = await h.request('/auth/token', 'POST');
+            assert.equal(pendingToken.status, 401);
+            assert.equal((await pendingToken.json()).error, 'no_session');
             const cookie = response.headers.get('Set-Cookie');
             assert.match(cookie, /HttpOnly/); assert.match(cookie, /Secure/); assert.match(cookie, /Partitioned/);
             assert.match(cookie, /SameSite=None/); assert.match(cookie, /Max-Age=2592000/);
