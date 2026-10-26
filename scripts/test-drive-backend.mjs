@@ -26,7 +26,7 @@ function harness() {
     const state = { invalidGrant: false, missingScope: false, holdRefresh: null, holdExchange: null, failGoogle: false, throwGoogle: false };
     const fetchGoogle = async (url, options) => {
         network.push({ url, options });
-        assert.equal(options.redirect, 'error');
+        assert.equal(options.redirect, 'manual');
         if (url === 'https://oauth2.googleapis.com/token') {
             if (state.throwGoogle) throw new TypeError('simulated transport failure');
             const body = options.body;

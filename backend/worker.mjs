@@ -36,8 +36,11 @@ async function googleToken(env, params) {
     const response = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID,
-            client_secret: env.GOOGLE_CLIENT_SECRET, ...params }), redirect: 'error'
+            client_secret: env.GOOGLE_CLIENT_SECRET, ...params }), redirect: 'manual'
     });
+    if (response.status >= 300 && response.status < 400) {
+        const error = new Error('google_unavailable'); error.status = 502; throw error;
+    }
     const data = await response.json();
     if (!response.ok) {
         const error = new Error(data.error === 'invalid_grant' ? 'reauthorize' : 'google_unavailable');
@@ -187,7 +190,7 @@ export class DriveSession {
                     if (!(tokens.scope || '').split(' ').includes(SCOPE) || !tokens.refresh_token) return callbackFailure('missing_offline_scope');
                     callbackStage = 'profile_read';
                     const response = await fetch('https://www.googleapis.com/drive/v3/about?fields=user(permissionId,displayName,emailAddress,photoLink)', {
-                        headers: { Authorization: 'Bearer ' + tokens.access_token }, redirect: 'error'
+                        headers: { Authorization: 'Bearer ' + tokens.access_token }, redirect: 'manual'
                     });
                     if (!response.ok) return callbackFailure('profile_unavailable', 502);
                     const profile = (await response.json()).user;
@@ -221,7 +224,7 @@ export class DriveSession {
                 error: session.error || (session.processing && session.processing.expires <= Date.now() ? 'authorization_failed' : ''),
                 reauthorize: session.reauthorize === true });
             if (path === '/auth/token') {
-                if (!session.tokens || session.reauthorize) return fail(session.reauthorize ? 'reauthorize' : 'no_session', 401);
+                if (!session.tokens || session.reauthorize) return fail(session.reauthorize ? 'reauthorize' : session.error || 'no_session', 401);
                 if (!this.refreshing) this.refreshing = this.freshToken(session, body.forceRefresh).finally(() => { this.refreshing = null; });
                 return json(await this.refreshing);
             }

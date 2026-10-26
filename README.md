@@ -185,5 +185,7 @@ Chrome 插件使用官方 `chrome.identity.getAuthToken`，不会加载远程授
 
 部署检查还通过受来源限制的 `/auth/health` 验证服务端加密/解密往返，只返回健康状态。授权失败时显示失败步骤，便于排查凭据交换、资料读取或会话保存；不会显示或记录授权码、访问/刷新凭据或 Client Secret。
 
+Cloudflare 出站请求使用 `redirect: "manual"` 并拒绝意外 3xx，不使用该运行时不支持的 `redirect: "error"`。`backend` 安装开发依赖后可运行 `npm run test:runtime`，在实际 workerd 运行时中验证 OAuth 交换、加密保存、刷新续期及不跟随跳转；Google 响应由测试替身提供。
+
 验证方法：运行 `node scripts/test-google-drive.cjs`（模拟测试，不访问真实云盘）及 `scripts/validate-release.ps1 -ExpectedVersion 1.23`。配置真实 OAuth 后，测试手动上传、自动上传开关、错误重试、本地下载，并核对云盘文件名、大小和播放。
 
