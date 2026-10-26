@@ -165,7 +165,7 @@ Chrome 插件使用官方 `chrome.identity.getAuthToken`，不会加载远程授
 
 部署步骤：
 
-1. 在 Cloudflare 账户中使用 Wrangler 官方工具登录并部署。保持 `APP_ORIGIN = "https://alangrove.github.io"`，不要使用通配来源。
+1. 在 Cloudflare 账户中使用 Wrangler 官方工具登录并部署。当前 Wrangler 部署接口使用 `workers_scripts:write` 权限；可运行 `npx wrangler login --device --scopes account:read user:read workers_scripts:write`，按官方页面完成设备授权。保持 `APP_ORIGIN = "https://alangrove.github.io"`，不要使用通配来源。
 2. 在 `backend` 目录运行 `npx wrangler deploy`，记下得到的 HTTPS Worker 根地址。SQLite Durable Objects 绑定和迁移已写入配置，无需手动建立数据库。
 3. Google Cloud 的 **Web 应用** OAuth 客户端添加“已获授权的重定向 URI”：`https://实际服务.workers.dev/oauth/callback`。这与已有的 JavaScript 来源不同，不能遗漏。
 4. 把公开的客户端 ID 写入 Worker 的 `GOOGLE_CLIENT_ID` 变量；通过 Cloudflare 控制台的 **Secret** 或 `npx wrangler secret put GOOGLE_CLIENT_SECRET` 输入对应 Client Secret。不要上传完整 OAuth JSON 或把 Secret 写进仓库。
@@ -176,6 +176,8 @@ Chrome 插件使用官方 `chrome.identity.getAuthToken`，不会加载远程授
 浏览器需支持 `Secure; HttpOnly; SameSite=None; Partitioned` Cookie（建议新版 Chrome）；浏览器完全禁止此 Cookie 时会明确提示，不能用前端存储刷新凭据来绕过。Google 账号应在项目允许的测试用户中，或正确配置 OAuth 发布状态。后端允许的来源必须与实际站点来源一致，根路径不属于 Origin。后端不可用、授权撤销或空间不足时会保留本页待传录音并提示重试；刷新会丢失音频队列。
 
 验证命令：`node --test scripts/test-google-drive.cjs scripts/test-drive-backend.mjs`。覆盖连接恢复、头像用户名、静默授权、上传队列、断开失败重试、OAuth state/PKCE、凭据加密、自动续期、撤销、并发刷新及会话到期。真实 Google OAuth 和 Cloudflare Cookie 恢复仍需在已配置的部署环境完成一次端到端验证。本次没有递增 1.23 版本号，没有打包 ZIP。
+
+部署进度（2026-10-26，未发版）：授权服务已部署到 `https://audio-recorder-drive.audio-recorder-drive-backend.workers.dev`，Durable Objects、Client Secret 和加密密钥已通过 Cloudflare 绑定/Secret 配置。`node scripts/check-drive-deployment.mjs https://audio-recorder-drive.audio-recorder-drive-backend.workers.dev` 已验证线上 HTTPS、来源限制、分区 Cookie 设置、回调地址和空会话创建/清除，不会授权 Google 或上传音频。新 Google Web OAuth 客户端及回调配置仍待完成，暂不把全站切换到此后端；`drive-backend-config.js` 保持空值以保留原临时连接方式。完成真实授权验证后再填入该公开服务地址。
 
 验证方法：运行 `node scripts/test-google-drive.cjs`（模拟测试，不访问真实云盘）及 `scripts/validate-release.ps1 -ExpectedVersion 1.23`。配置真实 OAuth 后，测试手动上传、自动上传开关、错误重试、本地下载，并核对云盘文件名、大小和播放。
 
