@@ -1,0 +1,20 @@
+name = "audio-recorder-drive"
+main = "worker.mjs"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[vars]
+APP_ORIGIN = "https://alangrove.github.io"
+# GOOGLE_CLIENT_ID is public; set it here or in the dashboard.
+GOOGLE_CLIENT_ID = "1060116981916-il0sn6vce3e8ihj8pojh2ruvcmk6gc59.apps.googleusercontent.com"
+
+[[durable_objects.bindings]]
+name = "DRIVE_SESSIONS"
+class_name = "DriveSession"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DriveSession"]
+
+# Set GOOGLE_CLIENT_SECRET and TOKEN_ENCRYPTION_KEY as Worker secrets.
+# Never add OAuth JSON, tokens, or secrets to this file.

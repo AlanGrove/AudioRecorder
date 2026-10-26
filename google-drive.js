@@ -1,4 +1,4 @@
-/* Google Drive support. OAuth tokens and upload sessions stay in page memory. */
+/* Access tokens stay in memory. Optional OAuth broker keeps refresh tokens server-side. */
 (() => {
     'use strict';
     const SCOPE = 'https://www.googleapis.com/auth/drive.file';
@@ -11,6 +11,9 @@
     try { settings = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { settings = {}; }
     settings = {
         clientId: typeof settings?.clientId === 'string' ? settings.clientId : '',
+        backendUrl: typeof settings?.backendUrl === 'string' ? settings.backendUrl : '',
+        rememberConnection: settings?.rememberConnection === true,
+        disconnectPending: settings?.disconnectPending === true,
         autoUpload: settings?.autoUpload === true,
         format: settings?.format === 'webm' ? 'webm' : 'mp3',
         folderName: typeof settings?.folderName === 'string' && settings.folderName.trim() ?
@@ -21,16 +24,111 @@
     let account = null;
     let authEpoch = 0;
     let authorizing = false;
+    let disconnecting = false;
     let sdkPromise = null;
     let currentRecording = null;
     let pumping = null;
     let activeController = null;
     let expiryTimer = null;
+    let renewing = null;
+    let restoring = null;
     let lastUploadUrl = '';
     const jobs = [];
     const folderCache = new Map();
     const element = id => document.getElementById(id);
     const connected = () => Boolean(token && account && Date.now() < tokenExpires);
+    function backendUrl() {
+        if (extension) return '';
+        const value = window.AudioRecorderDriveBackendUrl || settings.backendUrl;
+        if (!value) return '';
+        try {
+            const url = new URL(value);
+            if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.pathname !== '/') return '';
+            return url.origin;
+        } catch { return ''; }
+    }
+    const backendErrors = {
+        no_session: '保持连接的会话不存在或已过期，请重新连接一次。',
+        reauthorize: 'Google 授权已撤销或失效，请重新连接一次。',
+        origin_denied: '授权服务未允许当前网页地址，请检查 APP_ORIGIN 配置。',
+        backend_not_configured: '授权服务尚未配置完成，请按 README 设置服务端密钥。',
+        backend_unavailable: '授权服务暂时不可用，请检查服务配置或稍后重试。',
+        authorization_failed: 'Google 授权未完成，请重新连接。',
+        google_unavailable: 'Google 授权服务暂时不可用，请稍后重试。'
+    };
+    async function backendRequest(path, method = 'GET') {
+        const base = backendUrl();
+        if (!base) throw new Error('请先配置保持连接的授权服务地址。');
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 20000);
+        try {
+            const response = await fetch(base + path, { method, credentials: 'include', redirect: 'error',
+                cache: 'no-store', headers: { 'X-Recorder-Request': '1' }, signal: controller.signal });
+            const data = await response.json();
+            if (!response.ok) {
+                const error = new Error(backendErrors[data.error] || '授权请求失败，请稍后重试。');
+                error.code = data.error;
+                throw error;
+            }
+            return data;
+        } finally { clearTimeout(timeout); }
+    }
+    async function backendLogin() {
+        const epoch = authEpoch;
+        // Open synchronously from the click, before the network request, to preserve popup permission.
+        const popup = window.open('about:blank', 'audio-recorder-google-auth', 'popup,width=520,height=700');
+        if (!popup) throw new Error('授权窗口被拦截，请允许弹出窗口后再次连接。');
+        try {
+            const start = await backendRequest('/auth/start', 'POST');
+            if (epoch !== authEpoch) {
+                await backendRequest('/auth/logout', 'POST');
+                throw new Error('连接已取消。');
+            }
+            const url = new URL(start.url);
+            if (url.origin !== 'https://accounts.google.com' || url.pathname !== '/o/oauth2/v2/auth' || !start.flow) {
+                throw new Error('授权服务返回了无效的 Google 地址。');
+            }
+            popup.location.href = url.href;
+            for (let attempt = 0; attempt < 180; attempt++) {
+                if (epoch !== authEpoch) throw new Error('连接已取消。');
+                const session = await backendRequest('/auth/session');
+                if (session.connected && session.flow === start.flow) return await backendRequest('/auth/token', 'POST');
+                if (session.error && !session.pending) throw new Error(backendErrors[session.error] || 'Google 授权未完成，请重试。');
+                if (popup.closed) throw new Error('授权窗口已关闭，请重新连接。');
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            throw new Error('等待授权超时，请重新连接。');
+        } catch (error) {
+            if (error.code === 'no_session') throw new Error('浏览器未保存连接 Cookie。请使用支持分区 Cookie 的新版 Chrome，或检查隐私设置。');
+            throw error;
+        } finally { popup.close(); }
+    }
+    function photoUrl(value) {
+        try {
+            const url = new URL(value);
+            return url.protocol === 'https:' && !url.username && !url.password &&
+                (url.hostname === 'googleusercontent.com' || url.hostname.endsWith('.googleusercontent.com')) ? url.href : '';
+        } catch { return ''; }
+    }
+    function renderProfile() {
+        const visible = Boolean(account);
+        ['driveProfile', 'driveMainProfile'].forEach(id => { element(id).hidden = !visible; });
+        if (!visible) return;
+        const name = account.displayName || account.emailAddress || 'Google 用户';
+        ['driveProfileName', 'driveMainProfileName'].forEach(id => { element(id).textContent = name; });
+        element('driveProfileEmail').textContent = account.emailAddress || '';
+        element('driveMainProfileState').textContent = connected() ? '云盘已连接' : '正在恢复连接';
+        ['driveAvatar', 'driveMainAvatar'].forEach(id => {
+            const img = element(id);
+            const url = photoUrl(account.photoLink);
+            if (url && img.getAttribute('src') !== url) img.setAttribute('src', url);
+            if (!url) img.removeAttribute('src');
+            img.hidden = !url;
+        });
+        ['driveAvatarFallback', 'driveMainAvatarFallback'].forEach(id => {
+            element(id).textContent = Array.from(name)[0].toUpperCase();
+        });
+    }
     function message(text, error = false) {
         element('driveStatus').textContent = text;
         element('driveStatus').hidden = !text;
@@ -38,7 +136,7 @@
         element('driveSummary').textContent = text;
     }
     function save() {
-        // Store preferences only. No OAuth credentials, account data or recordings.
+        // Store preferences only. No OAuth credentials or recordings.
         localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     }
     function parseClientConfig(text) {
@@ -62,13 +160,15 @@
         return clientId;
     }
     function render() {
-        const configured = /^[\w.-]+\.apps\.googleusercontent\.com$/.test(extension ? manifestClient : settings.clientId);
+        const configured = Boolean(backendUrl()) || /^[\w.-]+\.apps\.googleusercontent\.com$/.test(extension ? manifestClient : settings.clientId);
         element('driveSetup').hidden = configured;
         element('driveConnectStep').textContent = configured ? '1' : '2';
         element('driveAutoUpload').checked = settings.autoUpload;
-        element('driveConnect').disabled = authorizing || Boolean(pumping);
-        element('driveConnect').textContent = authorizing ? '正在连接…' : connected() ? '重新连接 Google Drive' : '连接 Google Drive';
-        element('driveDisconnect').disabled = !token && !authorizing;
+        element('driveConnect').disabled = authorizing || disconnecting || Boolean(pumping) || connected();
+        element('driveConnect').textContent = authorizing ? '正在连接…' : connected() ? '已连接' : '连接 Google Drive';
+        element('driveSwitchAccount').hidden = !connected();
+        element('driveSwitchAccount').disabled = authorizing || disconnecting || Boolean(pumping);
+        element('driveDisconnect').disabled = disconnecting || (!token && !authorizing && !settings.rememberConnection && !settings.disconnectPending);
         element('driveUploadCurrent').disabled = !currentRecording || !connected() || Boolean(pumping);
         element('driveRetry').disabled = !connected() || Boolean(pumping) || !jobs.some(j => j.status === 'failed');
         element('driveRetry').hidden = !jobs.some(j => j.status === 'failed');
@@ -77,6 +177,14 @@
         element('driveQueue').hidden = !pending;
         element('driveAccount').textContent = connected() ?
             '已连接：' + (account.displayName || 'Google Drive') : '尚未连接 Google Drive';
+        element('driveAccount').hidden = Boolean(account);
+        element('driveConnectionHelp').textContent = extension ? '下次打开会通过 Chrome 自动恢复连接。' : backendUrl() ?
+            '已启用保持连接，下次打开自动恢复；授权过期会由服务自动续期。' :
+            '当前为临时连接；在“更多设置”配置授权服务后，可跨天保持连接。';
+        element('driveDirectClientSettings').hidden = Boolean(backendUrl());
+        element('driveSaveClient').hidden = extension || Boolean(backendUrl());
+        element('driveChangeConfig').hidden = Boolean(backendUrl());
+        renderProfile();
         element('driveAutoHelp').textContent = '停止录音后自动保存 ' + settings.format.toUpperCase() + '，本地下载不受影响。';
     }
     function clearAuth() {
@@ -91,10 +199,13 @@
         }
         render();
     }
-    async function request(url, options = {}, accepted = []) {
+    async function request(url, options = {}, accepted = [], retried = false) {
         const parsed = new URL(url);
         if (parsed.origin !== API || !/^\/(?:drive\/v3\/|upload\/drive\/v3\/)/.test(parsed.pathname)) {
             throw new Error('上传地址无效，请重试。');
+        }
+        if ((!token || Date.now() >= tokenExpires) && !authorizing && (backendUrl() || extension) && settings.rememberConnection) {
+            await renewAuthorization();
         }
         if (!token || Date.now() >= tokenExpires) {
             clearAuth();
@@ -110,6 +221,10 @@
         });
         if (epoch !== authEpoch) throw new Error('连接已更改，上传已暂停。');
         if (response.status === 401) {
+            if (backendUrl() && settings.rememberConnection && !authorizing && !retried) {
+                await renewAuthorization(true);
+                return request(url, options, accepted, true);
+            }
             clearAuth();
             throw new Error('Google 授权已过期，请重新连接后重试。');
         }
@@ -165,22 +280,69 @@
                 },
                 error_callback: () => reject(new Error('授权窗口已关闭或被浏览器拦截，请再次点击连接。'))
             });
-            client.requestAccessToken({ prompt: 'select_account' });
+            client.requestAccessToken({ prompt: settings.rememberConnection ? '' : 'select_account' });
         });
     }
+    async function applyAuthorization(result, epoch) {
+        if (epoch !== authEpoch) return;
+        token = result.accessToken || result.value;
+        tokenExpires = result.expiresAt || Date.now() + Math.max(0, result.lifetime - 60) * 1000;
+        if (!token || !Number.isFinite(tokenExpires) || tokenExpires <= Date.now()) throw new Error('授权服务返回的凭据无效。');
+        const response = await request(API + '/drive/v3/about?fields=user(permissionId,displayName,emailAddress,photoLink)', {}, [], true);
+        const profile = (await response.json()).user;
+        if (epoch !== authEpoch) return;
+        if (!profile?.permissionId) throw new Error('无法确认 Google Drive 账号，请重新连接。');
+        account = profile;
+        settings.rememberConnection = true;
+        settings.disconnectPending = false;
+        save();
+        clearTimeout(expiryTimer);
+        expiryTimer = setTimeout(() => {
+            if ((backendUrl() || extension) && !pumping) {
+                void renewAuthorization().catch(error => message(error.message, true));
+            } else if (!backendUrl() && !extension) {
+                clearAuth();
+                message('Google 临时授权已过期，请点击连接。配置授权服务可自动续期。', true);
+            }
+        }, Math.max(0, tokenExpires - Date.now()));
+        render();
+    }
+    async function nativeToken(interactive) {
+        const allowed = interactive ? await chrome.permissions.request({ origins: [API + '/*'] }) :
+            await chrome.permissions.contains({ origins: [API + '/*'] });
+        if (!allowed) throw new Error('请点击连接并允许访问 Google Drive。');
+        const auth = await chrome.identity.getAuthToken({ interactive, scopes: [SCOPE] });
+        const value = typeof auth === 'string' ? auth : auth?.token;
+        if (!value || (auth.grantedScopes && !auth.grantedScopes.includes(SCOPE))) throw new Error('未取得 Google Drive 上传权限。');
+        return { value, lifetime: 3500 };
+    }
+    async function renewAuthorization(force = false) {
+        if (renewing) return renewing;
+        const epoch = authEpoch;
+        renewing = (async () => {
+            try {
+                const result = extension ? await nativeToken(false) : await backendRequest('/auth/token' + (force ? '?refresh=1' : ''), 'POST');
+                await applyAuthorization(result, epoch);
+            } catch (error) {
+                if (epoch === authEpoch) clearAuth();
+                throw error;
+            } finally { renewing = null; }
+        })();
+        return renewing;
+    }
     async function connect() {
-        if (authorizing || pumping) return;
+        if (authorizing || disconnecting || pumping) return;
         if (extension && !manifestClient) {
             message('插件尚未配置 Google OAuth 客户端 ID，请按 README 的插件配置步骤设置后重新加载。', true);
             return;
         }
-        if (!extension && !/^[\w.-]+\.apps\.googleusercontent\.com$/.test(settings.clientId)) {
+        if (!extension && !backendUrl() && !/^[\w.-]+\.apps\.googleusercontent\.com$/.test(settings.clientId)) {
             message('先选择你下载的 Google 配置文件，再连接云盘。', true);
             element('driveImportClient').focus();
             return;
         }
         // SDK loading happens before the OAuth popup. A second click preserves user activation.
-        if (!extension && !window.google?.accounts?.oauth2) {
+        if (!extension && !backendUrl() && !window.google?.accounts?.oauth2) {
             authorizing = true;
             render();
             try {
@@ -194,28 +356,9 @@
         const epoch = ++authEpoch;
         render();
         try {
-            let result;
-            if (extension) {
-                const allowed = await chrome.permissions.request({ origins: [API + '/*'] });
-                if (!allowed) throw new Error('未允许访问 Google Drive，录音和本地下载仍可使用。');
-                const auth = await chrome.identity.getAuthToken({ interactive: true, scopes: [SCOPE] });
-                const value = typeof auth === 'string' ? auth : auth?.token;
-                if (!value || (auth.grantedScopes && !auth.grantedScopes.includes(SCOPE))) {
-                    throw new Error('未取得 Google Drive 上传权限。');
-                }
-                result = { value, lifetime: 3500 };
-            } else result = await webToken();
+            const result = extension ? await nativeToken(true) : backendUrl() ? await backendLogin() : await webToken();
+            await applyAuthorization(result, epoch);
             if (epoch !== authEpoch) return;
-            token = result.value;
-            tokenExpires = Date.now() + Math.max(0, result.lifetime - 60) * 1000;
-            const response = await request(API + '/drive/v3/about?fields=user(permissionId,displayName)');
-            if (epoch !== authEpoch) return;
-            account = (await response.json()).user;
-            if (!account?.permissionId) throw new Error('无法确认 Google Drive 账号，请重新连接。');
-            expiryTimer = setTimeout(() => {
-                clearAuth();
-                message('Google 授权已过期，请重新连接。待传录音仍保留在当前页面。', true);
-            }, Math.max(0, tokenExpires - Date.now()));
             message('Google Drive 已连接。可开启自动上传，或上传当前录音。');
         } catch (error) {
             if (epoch === authEpoch) { clearAuth(); message(error.message || '连接失败，请重试。', true); }
@@ -224,13 +367,33 @@
             render();
         }
     }
-    function disconnect() {
+    async function disconnect() {
+        if (disconnecting) return;
+        disconnecting = true;
         ++authEpoch;
         authorizing = false;
         activeController?.abort();
         clearAuth();
+        settings.rememberConnection = false;
         settings.autoUpload = false;
         save();
+        render();
+        if (backendUrl()) {
+            settings.disconnectPending = true;
+            save();
+            try { await backendRequest('/auth/logout', 'POST'); }
+            catch (error) {
+                if (error.code !== 'no_session') {
+                    disconnecting = false;
+                    render(); message('本页已断开。服务端退出尚未完成，请恢复网络后再次点击“断开连接”；本页不会自动恢复此会话。', true); return;
+                }
+            }
+            settings.disconnectPending = false;
+            save();
+            render();
+        }
+        disconnecting = false;
+        render();
         message('已断开连接并关闭自动上传。待传文件仅保留在当前页面。');
     }
     function quote(value) { return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
@@ -263,6 +426,7 @@
         return offset;
     }
     async function upload(job) {
+        if (!connected() && (backendUrl() || extension) && settings.rememberConnection) await renewAuthorization();
         if (!connected()) throw new Error('请先在设置中连接 Google Drive，再重试上传。');
         const owner = account.permissionId;
         if (job.owner !== owner) {
@@ -407,7 +571,8 @@
         render();
         return pumping;
     }
-    function queueCurrent() {
+    async function queueCurrent() {
+        if (restoring) await restoring;
         if (!currentRecording) { message('请先完成一段录音。', true); return Promise.resolve(); }
         const format = settings.format;
         const key = currentRecording.id + ':' + format;
@@ -456,6 +621,33 @@
         element('driveChangeConfig').addEventListener('click', () => element('driveConfigFile').click());
         element('driveLastUpload').addEventListener('click', () => void copyUploadLink(false));
         element('driveMainCopy').addEventListener('click', () => void copyUploadLink(true));
+        element('driveMainProfile').addEventListener('click', () => {
+            if (!dialog.open) dialog.showModal();
+            render();
+        });
+        ['driveAvatar', 'driveMainAvatar'].forEach(id => element(id).addEventListener('error', () => {
+            element(id).hidden = true;
+        }));
+        element('driveBackendUrl').value = window.AudioRecorderDriveBackendUrl || settings.backendUrl;
+        element('driveBackendUrl').readOnly = Boolean(window.AudioRecorderDriveBackendUrl);
+        element('driveBackendSave').hidden = extension || Boolean(window.AudioRecorderDriveBackendUrl);
+        element('driveBackendSettings').hidden = extension;
+        element('driveBackendSave').addEventListener('click', async () => {
+            const value = element('driveBackendUrl').value.trim();
+            if (value) {
+                try {
+                    const url = new URL(value);
+                    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error();
+                } catch { message('请填写 HTTPS 授权服务根地址，不含路径、账号或查询参数。', true); return; }
+            }
+            if (settings.backendUrl !== value) {
+                await disconnect();
+                if (settings.disconnectPending) return;
+            }
+            settings.backendUrl = value;
+            save(); render();
+            message(value ? '保持连接服务已设置，请连接 Google Drive 一次。' : '已切换为临时连接。');
+        });
         element('driveConfigFile').addEventListener('change', async event => {
             const file = event.target.files?.[0];
             event.target.value = '';
@@ -468,7 +660,10 @@
                     return;
                 }
                 if (!extension) {
-                    if (settings.clientId !== id) disconnect();
+                    if (settings.clientId !== id) {
+                        await disconnect();
+                        if (settings.disconnectPending) return;
+                    }
                     settings.clientId = id;
                     save();
                 }
@@ -477,13 +672,16 @@
                 message('配置已就绪，点击“连接 Google Drive”继续。');
             } catch (error) { message(error.message, true); }
         });
-        element('driveSaveClient').addEventListener('click', () => {
+        element('driveSaveClient').addEventListener('click', async () => {
             const value = clientInput.value.trim();
             if (!/^[\w.-]+\.apps\.googleusercontent\.com$/.test(value)) {
                 message('客户端 ID 格式不正确，应以 .apps.googleusercontent.com 结尾。', true);
                 return;
             }
-            if (settings.clientId !== value) disconnect();
+            if (settings.clientId !== value) {
+                await disconnect();
+                if (settings.disconnectPending) return;
+            }
             settings.clientId = value;
             save();
             render();
@@ -510,7 +708,8 @@
             message(settings.autoUpload ? '已开启：之后每次录音停止都会自动上传。' : '已关闭自动上传，已排队的上传会继续完成。');
         });
         element('driveConnect').addEventListener('click', () => void connect());
-        element('driveDisconnect').addEventListener('click', disconnect);
+        element('driveSwitchAccount').addEventListener('click', () => void connect());
+        element('driveDisconnect').addEventListener('click', () => void disconnect());
         element('driveUploadCurrent').addEventListener('click', () => void queueCurrent());
         element('driveRetry').addEventListener('click', () => {
             jobs.filter(j => j.status === 'failed').forEach(j => { j.status = 'queued'; });
@@ -519,8 +718,26 @@
         window.addEventListener('beforeunload', event => {
             if (jobs.some(j => j.status !== 'done')) { event.preventDefault(); event.returnValue = ''; }
         });
-        if (settings.autoUpload) message('自动上传已开启，请先连接 Google Drive。', true);
         render();
+        if (settings.disconnectPending && backendUrl()) {
+            void disconnect();
+        } else if (backendUrl() || (extension && manifestClient && settings.rememberConnection)) {
+            const restoreEpoch = authEpoch;
+            authorizing = true;
+            render();
+            message('正在恢复 Google Drive 连接…');
+            restoring = (async () => {
+                try {
+                    await renewAuthorization();
+                    if (restoreEpoch === authEpoch) message('Google Drive 连接已恢复。' + (settings.autoUpload ? '自动上传已开启。' : ''));
+                } catch (error) {
+                    if (restoreEpoch === authEpoch) {
+                        if (settings.rememberConnection || error.code !== 'no_session') message(error.message, true);
+                        else message('请连接 Google Drive 一次，之后会自动恢复。');
+                    }
+                } finally { authorizing = false; restoring = null; render(); }
+            })();
+        } else if (settings.autoUpload) message('自动上传已开启，请先连接 Google Drive。', true);
     }
     window.AudioRecorderDrive = Object.freeze({ setRecording });
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });

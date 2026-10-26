@@ -1,0 +1,13 @@
+{
+  "name": "audio-recorder-drive-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "test": "node --test ../scripts/test-drive-backend.mjs",
+    "test:runtime": "node ../scripts/check-drive-runtime.cjs"
+  },
+  "devDependencies": {
+    "wrangler": "4.153.0"
+  }
+}

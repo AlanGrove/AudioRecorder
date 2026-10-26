@@ -47,6 +47,7 @@ $requiredFiles = @(
     "AudioRecorder.html",
     "AudioRecorder.js",
     "google-drive.js",
+    "drive-backend-config.js",
     "google-drive.css",
     "recorder.css",
     "AudioRecorderWorklet.js",

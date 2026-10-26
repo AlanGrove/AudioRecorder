@@ -7,9 +7,111 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'google-drive.js'), 'u
 const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const KEY = 'audioRecorderDriveSettings';
 
+test('连接后设置及主页面显示头像用户名，图片失败时保留姓名首字', async () => {
+    const h = harness(); await h.connect();
+    assert.equal(h.el('driveProfileName').textContent, 'Test account');
+    assert.equal(h.el('driveMainProfileName').textContent, 'Test account');
+    assert.equal(h.el('driveAvatar').getAttribute('src'), 'https://lh3.googleusercontent.com/test-photo');
+    assert.equal(h.el('driveProfileEmail').textContent, 'test@example.invalid');
+    await h.fire('driveAvatar', 'error');
+    assert.equal(h.el('driveAvatar').hidden, true);
+    assert.equal(h.el('driveAvatarFallback').textContent, 'T');
+    await h.fire('driveMainProfile'); assert.equal(h.el('driveSettings').open, true);
+});
+
+test('拒绝非 Google 头像地址且姓名作为纯文本显示', async () => {
+    const h = harness({ photoLink: 'https://evil.invalid/photo' }); await h.connect();
+    assert.equal(h.el('driveAvatar').hidden, true);
+    assert.equal(h.el('driveAvatar').getAttribute('src'), null);
+});
+
+test('后端会话自动恢复，刷新后无需弹窗，授权仅保留在内存', async () => {
+    const h = harness({ backend: true, backendSession: true });
+    await h.until(() => h.el('driveConnect').textContent === '已连接');
+    assert.equal(h.authCalls.length, 0);
+    assert.equal(h.el('driveMainProfile').hidden, false);
+    const again = harness({ backend: true, backendSession: true, stored: h.stored });
+    await again.until(() => again.el('driveConnect').textContent === '已连接');
+    assert.equal(again.authCalls.length, 0);
+    assert.ok(!JSON.stringify([...h.stored.values()]).includes('broker-memory-only'));
+    assert.ok(!JSON.stringify([...h.stored.values()]).includes('test@example.invalid'));
+});
+
+test('恢复连接期间完成的录音会等待恢复再自动上传', async () => {
+    const h = harness({ backend: true, backendSession: true, settings: { autoUpload: true } });
+    h.drive.setRecording(h.recording());
+    await h.until(() => h.completed.size === 1);
+    assert.equal(h.uploads().length, 1);
+    assert.match(h.el('driveSummary').textContent, /已上传/);
+});
+
+test('没有后端会话时可交互连接，切换账号后仍正常上传', async () => {
+    const h = harness({ backend: true });
+    await h.until(() => !h.el('driveConnect').disabled);
+    await h.connect();
+    assert.equal(h.authCalls.length, 0);
+    assert.equal(h.el('driveSwitchAccount').hidden, false);
+    await h.fire('driveSwitchAccount');
+    await h.until(() => h.el('driveConnect').textContent === '已连接');
+    h.drive.setRecording(h.recording()); await h.fire('driveUploadCurrent');
+    await h.until(() => h.completed.size === 1);
+});
+
+test('断开清除账号、关闭自动上传并退出后端，下次打开不自动连接', async () => {
+    const h = harness({ backend: true, backendSession: true, settings: { autoUpload: true } });
+    await h.until(() => h.el('driveConnect').textContent === '已连接');
+    await h.fire('driveDisconnect');
+    await h.until(() => h.el('driveStatus').textContent.includes('已断开连接'));
+    assert.equal(h.state.backendSession, false);
+    assert.equal(h.el('driveMainProfile').hidden, true);
+    const prefs = JSON.parse(h.stored.get(KEY));
+    assert.equal(prefs.autoUpload, false); assert.equal(prefs.rememberConnection, false);
+    const again = harness({ backend: true, stored: h.stored });
+    await again.until(() => !again.el('driveConnect').disabled);
+    assert.equal(again.el('driveMainProfile').hidden, true);
+});
+
+test('断开时网络失败会记住退出请求，下次打开先退出并不恢复授权', async () => {
+    const h = harness({ backend: true, backendSession: true });
+    await h.until(() => h.el('driveConnect').textContent === '已连接');
+    h.state.failLogout = true; await h.fire('driveDisconnect');
+    await h.until(() => JSON.parse(h.stored.get(KEY)).disconnectPending === true);
+    const again = harness({ backend: true, backendSession: true, stored: h.stored });
+    await again.until(() => !JSON.parse(again.stored.get(KEY)).disconnectPending);
+    assert.equal(again.state.backendSession, false);
+    assert.equal(again.calls.filter(c => c.url.endsWith('/auth/token')).length, 0);
+});
+
+test('Chrome 插件下次打开用浏览器缓存静默恢复且不申请新权限', async () => {
+    const h = harness({ extension: true, manifest: { oauth2: { client_id: 'test.apps.googleusercontent.com' } },
+        settings: { rememberConnection: true } });
+    await h.until(() => h.el('driveConnect').textContent === '已连接');
+    assert.equal(h.el('driveMainProfileName').textContent, 'Test account');
+});
+
+test('后端连接遇到 Google 401 会强制续期一次并继续原上传', async () => {
+    const h = harness({ backend: true, backendSession: true });
+    await h.until(() => h.el('driveConnect').textContent === '已连接');
+    h.state.unauthorized = true;
+    h.drive.setRecording(h.recording()); await h.fire('driveUploadCurrent');
+    await h.until(() => h.completed.size === 1);
+    assert.equal(h.calls.filter(c => c.url.endsWith('/auth/token?refresh=1')).length, 1);
+    assert.equal(h.uploads().length, 1);
+});
+
+test('恢复期间用户断开，延迟返回的授权不会重新显示已连接', async () => {
+    const h = harness({ backend: true, backendSession: true });
+    let release; h.state.brokerHold = new Promise(resolve => { release = resolve; });
+    await h.fire('driveDisconnect'); release();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.el('driveMainProfile').hidden, true);
+    assert.equal(JSON.parse(h.stored.get(KEY)).rememberConnection, false);
+    assert.ok(!h.el('driveStatus').textContent.includes('连接已恢复'));
+});
+
 function harness(options = {}) {
     const elements = new Map();
-    const stored = new Map([[KEY, JSON.stringify({ clientId: 'test.apps.googleusercontent.com' })]]);
+    const stored = options.stored || new Map([[KEY, JSON.stringify({ clientId: 'test.apps.googleusercontent.com', ...options.settings })]]);
     const calls = [];
     const sessions = new Map();
     const completed = new Map();
@@ -17,7 +119,9 @@ function harness(options = {}) {
     let legacyInput = null;
     let idCount = 0;
     let chunkCount = 0;
-    const state = { failChunk: 0, lostFinal: false, unauthorized: false, badLocation: false, hold: null };
+    const state = { failChunk: 0, lostFinal: false, unauthorized: false, badLocation: false, hold: null,
+        backendSession: options.backendSession === true, brokerFlow: 'flow-test', failLogout: false, brokerHold: null };
+    const authCalls = [];
     class Element {
         constructor() {
             this.listeners = {};
@@ -27,11 +131,15 @@ function harness(options = {}) {
             this.hidden = false;
             this.classList = { toggle() {} };
             this.style = {};
+            this.attributes = {};
         }
         addEventListener(type, listener) { (this.listeners[type] ||= []).push(listener); }
         focus() {}
         select() { this.selected = true; }
         remove() {}
+        getAttribute(name) { return this.attributes[name] || null; }
+        setAttribute(name, value) { this.attributes[name] = value; }
+        removeAttribute(name) { delete this.attributes[name]; }
         appendChild(input) { legacyInput = input; }
         click() { return fire(this, 'click'); }
         showModal() { this.open = true; }
@@ -50,11 +158,34 @@ function harness(options = {}) {
     });
     async function fetch(url, request = {}) {
         calls.push({ url, ...request });
+        if (new URL(url).origin === 'https://recorder.example') {
+            assert.equal(request.credentials, 'include');
+            assert.equal(request.cache, 'no-store');
+            assert.equal(request.headers['X-Recorder-Request'], '1');
+            const route = new URL(url).pathname;
+            if (route === '/auth/token') {
+                if (state.brokerHold) await state.brokerHold;
+                return state.backendSession ? json({ accessToken: 'broker-memory-only', expiresAt: Date.now() + 3000000 }) :
+                    json({ error: 'no_session' }, 401);
+            }
+            if (route === '/auth/start') {
+                state.backendSession = true;
+                return json({ url: 'https://accounts.google.com/o/oauth2/v2/auth?state=test', flow: state.brokerFlow });
+            }
+            if (route === '/auth/session') return json({ connected: state.backendSession, flow: state.brokerFlow });
+            if (route === '/auth/logout') {
+                if (state.failLogout) throw new Error('offline');
+                state.backendSession = false;
+                return json({ connected: false });
+            }
+            throw new Error('Unexpected broker request');
+        }
         assert.equal(new URL(url).origin, 'https://www.googleapis.com');
         assert.match(request.headers.Authorization, /^Bearer /);
         if (state.unauthorized) { state.unauthorized = false; return json({}, 401); }
         const parsed = new URL(url);
-        if (parsed.pathname.endsWith('/about')) return json({ user: { permissionId: 'owner-1', displayName: 'Test account' } });
+        if (parsed.pathname.endsWith('/about')) return json({ user: { permissionId: 'owner-1', displayName: 'Test account',
+            emailAddress: 'test@example.invalid', photoLink: options.photoLink || 'https://lh3.googleusercontent.com/test-photo' } });
         if (parsed.pathname.endsWith('/generateIds')) return json({ ids: ['file-' + ++idCount] });
         if (parsed.pathname === '/drive/v3/files' && request.method === 'POST') return json({ id: 'folder-1' });
         if (parsed.pathname === '/drive/v3/files') return json({ files: [{ id: 'folder-1' }] });
@@ -111,11 +242,14 @@ function harness(options = {}) {
             copied.push(text);
         } } },
         location: { protocol: options.extension ? 'chrome-extension:' : 'https:' },
+        AudioRecorderDriveBackendUrl: options.backend ? 'https://recorder.example' : '',
+        open: () => options.popupBlocked ? null : { location: {}, closed: false, close() { this.closed = true; } },
         localStorage: { getItem: key => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
         URL, URLSearchParams, Blob, AbortController, fetch, console, Date,
         setTimeout: () => 1, clearTimeout() {},
         google: { accounts: { oauth2: {
-            initTokenClient: config => ({ requestAccessToken() {
+            initTokenClient: config => ({ requestAccessToken(args) {
+                authCalls.push(args);
                 queueMicrotask(() => config.callback({ access_token: 'fake-only', expires_in: 3600 }));
             } }),
             hasGrantedAllScopes: (_response, scope) => scope === SCOPE
@@ -124,9 +258,9 @@ function harness(options = {}) {
     };
     if (options.extension) context.chrome = {
         runtime: { getManifest: () => options.manifest || {} },
-        permissions: { request: async () => options.allowed !== false },
+        permissions: { request: async () => options.allowed !== false, contains: async () => options.allowed !== false },
         identity: { getAuthToken: async args => {
-            assert.equal(args.interactive, true);
+            if (!options.settings?.rememberConnection) assert.equal(args.interactive, true);
             assert.deepEqual(Array.from(args.scopes), [SCOPE]);
             return { token: 'fake-only', grantedScopes: [SCOPE] };
         }, removeCachedAuthToken: async () => {} }
@@ -140,7 +274,7 @@ function harness(options = {}) {
     }
     async function connect() {
         await fire('driveConnect');
-        await until(() => !el('driveConnect').disabled);
+        await until(() => el('driveConnect').textContent === '已连接' || !el('driveConnect').disabled);
         assert.match(el('driveAccount').textContent, /已连接/);
     }
     function recording(id = 'take1', size = 64) {
@@ -148,7 +282,7 @@ function harness(options = {}) {
             webm: { blob: new Blob(['webm'], { type: 'audio/webm' }), name: id + '.webm' } };
     }
     const uploads = () => calls.filter(c => c.method === 'POST' && c.url.includes('uploadType=resumable'));
-    return { el, fire, connect, until, recording, calls, state, stored, completed, uploads, copied,
+    return { el, fire, connect, until, recording, calls, state, stored, completed, uploads, copied, authCalls,
         drive: context.AudioRecorderDrive };
 }
 

@@ -43,7 +43,7 @@
 #driveSettings #driveAdvanced { border-top: 1px solid #edf0f4; padding-top: 12px; margin-top: 14px; }
 #driveSettings #driveAdvanced summary { cursor: pointer; color: #667085; font-size: 12px; }
 #driveSettings label.drive-field { display: block; margin: 14px 0; font-size: 12px; font-weight: 600; }
-#driveSettings input[type="text"], #driveSettings select, #driveMainCopyFallback {
+#driveSettings input[type="text"], #driveSettings input[type="url"], #driveSettings select, #driveMainCopyFallback {
     box-sizing: border-box; width: 100%; margin-top: 6px; padding: 9px 10px;
     border: 1px solid #dce1e8; border-radius: 9px; color: #1d2939; background: #f8fafc; font: inherit; font-size: 12px; font-weight: 400;
 }
@@ -65,3 +65,19 @@
 #driveSummary:empty { display: none; }
 #driveSettings [hidden], #driveMainResult[hidden], #driveMainResult [hidden] { display: none !important; }
 #driveSettings button:focus-visible, #driveSettings summary:focus-visible, #driveSettings input:focus-visible, #driveMainResult button:focus-visible { outline: 2px solid #007aff; outline-offset: 3px; }
+.drive-profile, .background-box .drive-main-profile { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.drive-profile { margin: 12px 0; }
+.drive-avatar-wrap { position: relative; display: block; flex: 0 0 36px; width: 36px; height: 36px; }
+.drive-avatar, .drive-avatar-fallback { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; }
+.drive-avatar { object-fit: cover; }
+.drive-avatar-fallback { display: grid; place-items: center; background: #e9f2ff; color: #3172bb; font-size: 16px; font-weight: 600; }
+.drive-profile-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; text-align: left; }
+.drive-profile-text strong, .drive-profile-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drive-profile-text strong { font-size: 13px; color: #344054; font-weight: 600; }
+.drive-profile-text small { color: #667085; font-size: 11px; font-weight: 400; }
+.background-box .drive-main-profile { box-sizing: border-box; width: 100%; height: auto; margin: -10px 0 16px; padding: 8px 10px; border: 1px solid #edf0f4; border-radius: 11px; background: #f8fafc; box-shadow: none; }
+.drive-main-profile .drive-avatar-wrap { flex-basis: 28px; width: 28px; height: 28px; }
+.drive-main-profile .drive-profile-text strong { font-size: 11px; }
+.drive-main-profile .drive-profile-text small { font-size: 10px; }
+.drive-main-profile[hidden], .drive-main-profile [hidden] { display: none !important; }
+.drive-main-profile:focus-visible { outline: 2px solid #007aff; outline-offset: 3px; }

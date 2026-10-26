@@ -842,7 +842,13 @@ button {
         <div class="drive-step-body">
             <h3>连接你的 Google Drive</h3>
             <p id="driveAccount" class="drive-muted">尚未连接</p>
+            <div id="driveProfile" class="drive-profile" hidden>
+                <span class="drive-avatar-wrap"><span id="driveAvatarFallback" class="drive-avatar-fallback" aria-hidden="true"></span><img id="driveAvatar" class="drive-avatar" alt="Google 账号头像" referrerpolicy="no-referrer" hidden></span>
+                <span class="drive-profile-text"><strong id="driveProfileName"></strong><small id="driveProfileEmail"></small></span>
+            </div>
             <button id="driveConnect" class="drive-primary" type="button">连接 Google Drive</button>
+            <button id="driveSwitchAccount" type="button" hidden>切换账号</button>
+            <p id="driveConnectionHelp" class="drive-muted"></p>
         </div>
     </section>
     <label class="drive-auto" for="driveAutoUpload">
@@ -867,6 +873,13 @@ button {
     </section>
     <details id="driveAdvanced">
         <summary>更多设置</summary>
+        <div id="driveBackendSettings">
+            <label class="drive-field" for="driveBackendUrl">保持连接服务地址
+                <input id="driveBackendUrl" type="url" placeholder="https://你的授权服务.workers.dev" autocomplete="off" spellcheck="false">
+            </label>
+            <button id="driveBackendSave" type="button">保存服务地址</button>
+            <p class="drive-muted">部署自己的 Cloudflare Worker 后填写。刷新凭据仅保存在服务端，不需在这里填写密钥。</p>
+        </div>
         <label class="drive-field" for="driveFormat">上传格式
             <select id="driveFormat"><option value="mp3">MP3（推荐）</option><option value="webm">WebM</option></select>
         </label>
@@ -874,16 +887,18 @@ button {
             <input id="driveFolderName" type="text" value="Audio Recorder" maxlength="100">
         </label>
         <p class="drive-muted">会自动创建文件夹，本地下载照常保留。</p>
+        <div id="driveDirectClientSettings">
         <label class="drive-field" for="driveClientId">手动填写客户端 ID
             <input id="driveClientId" type="text" placeholder="…apps.googleusercontent.com" autocomplete="off" spellcheck="false">
         </label>
         <p id="driveClientHelp" class="drive-muted"></p>
+        </div>
         <div class="drive-actions">
             <button id="driveSaveClient" type="button">保存</button>
             <button id="driveChangeConfig" type="button">更换配置文件</button>
             <button id="driveDisconnect" type="button" disabled>断开连接</button>
         </div>
-        <p class="drive-muted">配置文件只在本机读取，仅保存客户端 ID。刷新页面或授权到期后需重新连接。</p>
+        <p class="drive-muted">配置文件只在本机读取，仅保存客户端 ID。保持连接服务需另外配置服务端 OAuth 客户端；断开连接会退出此浏览器会话。</p>
     </details>
 </dialog>
 <div class="background-box">     
@@ -896,6 +911,10 @@ button {
         </button>
         </div>
     </div>
+    <button id="driveMainProfile" class="drive-main-profile" type="button" aria-label="查看已连接的 Google 账号" hidden>
+        <span class="drive-avatar-wrap"><span id="driveMainAvatarFallback" class="drive-avatar-fallback" aria-hidden="true"></span><img id="driveMainAvatar" class="drive-avatar" alt="Google 账号头像" referrerpolicy="no-referrer" hidden></span>
+        <span class="drive-profile-text"><strong id="driveMainProfileName"></strong><small id="driveMainProfileState"></small></span>
+    </button>
 <div class="timer-row">
     <div class="record-control-wrap">
         <button id="toggle" type="button" aria-label="开始录音"><span class="record-icon" aria-hidden="true"></span></button>
@@ -1013,6 +1032,7 @@ button {
     </section>
     <audio id="audioPlayback" controls></audio>
 </div>
+<script src="drive-backend-config.js"></script>
 <script src="google-drive.js"></script>
 <script src="AudioRecorder.js"></script>
     <script src="lamejs.iife.js"></script>

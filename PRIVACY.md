@@ -16,13 +16,15 @@ The app stores local preferences in the browser, including file naming, saved li
 
 ## Network Access
 
-The web version loads Google's Identity Services library from `accounts.google.com` only when the user requests a connection. The Chrome extension uses Chrome's Identity API instead. Authorized Drive requests go to `www.googleapis.com`. There is no developer upload server. The "open links" feature still opens links configured by the user or listed in `links.txt`.
+Without a configured authorization backend, the web version loads Google's Identity Services library from `accounts.google.com` only when the user requests a connection. With a backend, OAuth requests also go to the configured Cloudflare Worker and Google. The Chrome extension uses Chrome's Identity API instead. Audio uploads go directly to `www.googleapis.com`; the authorization backend does not receive recordings. The "open links" feature still opens links configured by the user or listed in `links.txt`.
 
 ## Google Drive
 
 Google Drive is optional and requests only `drive.file`, for files and folders created by this app. It does not request access to the entire Drive. Google processes OAuth and API requests under its own policies.
 
-OAuth authorization, account display name and permission identifier, upload sessions and pending audio stay in page memory; they are not written to browser storage or sent to the source repository. Authorization can expire and then requires reconnection.
+Browser access tokens, account information, upload sessions and pending audio stay in page memory and are never committed to the source repository. The app displays the connected account's name, email address and Google-hosted profile photo; loading the photo sends a request to Google's image host with no referrer. If no photo is available, a name initial is shown. The app stores only connection preferences, including the backend address and a flag to restore the connection, in local storage.
+
+The optional Cloudflare Worker stores the account profile and AES-GCM encrypted access/refresh tokens in a per-browser Durable Object. The encryption key and Google Client Secret are Worker secrets. A Secure, HttpOnly, Partitioned cookie identifies a browser session for up to 30 days. JavaScript cannot read this cookie. The backend uses Google's refresh token to renew short-lived authorization automatically; it sends only a short-lived access token and profile to the allowed web origin over HTTPS. Expired sessions are deleted. Authorization revocation, Google policy limits or clearing cookies can require reconnection. Without this backend, web authorization is temporary. Chrome extension authorization is managed by Chrome's identity token cache.
 
 ## Configuration Import
 
@@ -30,5 +32,5 @@ OAuth JSON is read and parsed locally. Only the public client ID is retained; th
 
 ## Disconnecting
 
-Disconnect clears this page's authorization and disables automatic upload. It does not delete uploaded recordings. To revoke the app's Google account grant, use Google's third-party app access settings. Existing uploaded files can be managed in Google Drive.
+Disconnect clears this page's authorization, disables automatic upload and asks the backend to delete this browser's stored tokens and session cookie. If the request fails, the app remembers the pending logout and retries it on the next open instead of restoring authorization. Disconnecting does not delete uploaded recordings or revoke sessions on other browsers. To revoke the app's Google account grant everywhere, use Google's third-party app access settings. Existing uploaded files can be managed in Google Drive.
 

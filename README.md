@@ -153,9 +153,29 @@ Chrome 插件使用官方 `chrome.identity.getAuthToken`，不会加载远程授
 
 采用可恢复上传和 8 MiB 分块，以固定云端文件 ID 进行同一录音/格式的重试，避免完成响应丢失导致重复创建。网络、配额或授权错误会显示状态并保留待传音频，重新连接后可点击“重试待上传”。上传与本地自动下载相互独立。
 
-待传音频、上传会话和 OAuth 授权仅保存在页面内存中，刷新/关闭页面会丢失队列，关闭前请完成上传或下载备份。网页授权过期后需主动重新连接，不支持长期无人值守的授权续期。设置按浏览器来源分别保存在本机，不跨设备同步。
+待传音频和上传会话仅保存在页面内存中，刷新/关闭页面会丢失队列，关闭前请完成上传或下载备份。浏览器只在内存中使用短期访问凭据。未配置后端时，网页版仍为临时授权；配置下述保持连接服务后，可自动恢复并续期。设置按浏览器来源分别保存在本机，不跨设备同步。
 
-断开连接会清除本页授权并关闭自动上传，不删除云端录音；若需撤销 Google 账号上的应用授权，请在 Google 账号第三方应用权限中操作。
+连接后，设置和录音主页面显示 Google 头像、用户名，设置中还显示邮箱；头像不可用时显示姓名首字。点击主页面账号卡片可打开设置。Chrome 插件在已授权、已配置客户端的情况下，下次打开通过 Chrome 缓存静默恢复，不会自动申请新权限。
+
+断开连接会清除本页授权、关闭自动上传，并删除保持连接服务中此浏览器的会话，不删除云端录音。网络中断导致服务端退出未完成时，下次打开会先重试退出，不会自动恢复授权。若需撤销所有浏览器的 Google 应用授权，请在 Google 账号第三方应用权限中操作。
+
+### Cloudflare Worker 保持连接（未发版调整）
+
+源码在 `backend/worker.mjs`，配置在 `backend/wrangler.toml`。只处理 OAuth，音频仍直接上传 Google。采用 SQLite Durable Objects 保存每个浏览器的会话；访问/刷新凭据另用 AES-GCM 加密，密钥作为 Worker Secret。会话有效期为 30 天，Google 撤销授权、测试模式刷新令牌约 7 天到期、浏览器清理 Cookie 等情况仍需重连，不能保证永久登录。
+
+部署步骤：
+
+1. 在 Cloudflare 账户中使用 Wrangler 官方工具登录并部署。保持 `APP_ORIGIN = "https://alangrove.github.io"`，不要使用通配来源。
+2. 在 `backend` 目录运行 `npx wrangler deploy`，记下得到的 HTTPS Worker 根地址。SQLite Durable Objects 绑定和迁移已写入配置，无需手动建立数据库。
+3. Google Cloud 的 **Web 应用** OAuth 客户端添加“已获授权的重定向 URI”：`https://实际服务.workers.dev/oauth/callback`。这与已有的 JavaScript 来源不同，不能遗漏。
+4. 把公开的客户端 ID 写入 Worker 的 `GOOGLE_CLIENT_ID` 变量；通过 Cloudflare 控制台的 **Secret** 或 `npx wrangler secret put GOOGLE_CLIENT_SECRET` 输入对应 Client Secret。不要上传完整 OAuth JSON 或把 Secret 写进仓库。
+5. 生成随机 32 字节 base64url 值（例如 `node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))"`），用 Secret `TOKEN_ENCRYPTION_KEY` 保存。不要在生产环境随意更换此密钥；更换会导致已有会话需要重新授权。
+6. 将 Worker 根地址填入 `drive-backend-config.js` 中的公开配置并部署 GitHub Pages；也可在设置 → 更多设置 → 保持连接服务地址中填写，测试自己的服务。
+7. 打开网页，连接 Google 一次并允许所需范围，开启自动上传。刷新、关闭再打开、等待短期凭据到期后再次录音，都应自动恢复/续期。配置文件不需要再次导入。Google 授权时需要允许离线访问，因此第一次接入此后端需重新连接一次。
+
+浏览器需支持 `Secure; HttpOnly; SameSite=None; Partitioned` Cookie（建议新版 Chrome）；浏览器完全禁止此 Cookie 时会明确提示，不能用前端存储刷新凭据来绕过。Google 账号应在项目允许的测试用户中，或正确配置 OAuth 发布状态。后端允许的来源必须与实际站点来源一致，根路径不属于 Origin。后端不可用、授权撤销或空间不足时会保留本页待传录音并提示重试；刷新会丢失音频队列。
+
+验证命令：`node --test scripts/test-google-drive.cjs scripts/test-drive-backend.mjs`。覆盖连接恢复、头像用户名、静默授权、上传队列、断开失败重试、OAuth state/PKCE、凭据加密、自动续期、撤销、并发刷新及会话到期。真实 Google OAuth 和 Cloudflare Cookie 恢复仍需在已配置的部署环境完成一次端到端验证。本次没有递增 1.23 版本号，没有打包 ZIP。
 
 验证方法：运行 `node scripts/test-google-drive.cjs`（模拟测试，不访问真实云盘）及 `scripts/validate-release.ps1 -ExpectedVersion 1.23`。配置真实 OAuth 后，测试手动上传、自动上传开关、错误重试、本地下载，并核对云盘文件名、大小和播放。
 
