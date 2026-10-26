@@ -89,7 +89,8 @@
                 throw new Error('授权服务返回了无效的 Google 地址。');
             }
             popup.location.href = url.href;
-            for (let attempt = 0; attempt < 180; attempt++) {
+            const deadline = Date.now() + 9 * 60 * 1000;
+            while (Date.now() < deadline) {
                 if (epoch !== authEpoch) throw new Error('连接已取消。');
                 const session = await backendRequest('/auth/session');
                 if (session.connected && session.flow === start.flow) return await backendRequest('/auth/token', 'POST');
@@ -355,6 +356,7 @@
         authorizing = true;
         const epoch = ++authEpoch;
         render();
+        message('请在 Google 窗口完成授权，完成后会自动连接。');
         try {
             const result = extension ? await nativeToken(true) : backendUrl() ? await backendLogin() : await webToken(switchAccount);
             await applyAuthorization(result, epoch);
