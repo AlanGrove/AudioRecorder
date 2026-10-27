@@ -121,20 +121,24 @@
     }
     function renderProfile() {
         const visible = Boolean(account);
-        ['driveProfile', 'driveMainProfile'].forEach(id => { element(id).hidden = !visible; });
+        element('driveProfile').hidden = !visible;
+        const cloud = element('driveMainProfile');
+        cloud.setAttribute('data-connected', String(connected()));
+        const label = connected() ? 'Google 云端已连接，打开设置' : '连接 Google 云端，打开设置';
+        cloud.setAttribute('aria-label', label);
+        cloud.setAttribute('title', label);
         if (!visible) return;
         const name = account.displayName || account.emailAddress || 'Google 用户';
-        ['driveProfileName', 'driveMainProfileName'].forEach(id => { element(id).textContent = name; });
+        element('driveProfileName').textContent = name;
         element('driveProfileEmail').textContent = account.emailAddress || '';
-        element('driveMainProfileState').textContent = connected() ? '云盘已连接' : '正在恢复连接';
-        ['driveAvatar', 'driveMainAvatar'].forEach(id => {
+        ['driveAvatar'].forEach(id => {
             const img = element(id);
             const url = photoUrl(account.photoLink);
             if (url && img.getAttribute('src') !== url) img.setAttribute('src', url);
             if (!url) img.removeAttribute('src');
             img.hidden = !url;
         });
-        ['driveAvatarFallback', 'driveMainAvatarFallback'].forEach(id => {
+        ['driveAvatarFallback'].forEach(id => {
             element(id).textContent = Array.from(name)[0].toUpperCase();
         });
     }
@@ -635,7 +639,7 @@
             if (!dialog.open) dialog.showModal();
             render();
         });
-        ['driveAvatar', 'driveMainAvatar'].forEach(id => element(id).addEventListener('error', () => {
+        ['driveAvatar'].forEach(id => element(id).addEventListener('error', () => {
             element(id).hidden = true;
         }));
         element('driveBackendUrl').value = window.AudioRecorderDriveBackendUrl || settings.backendUrl;

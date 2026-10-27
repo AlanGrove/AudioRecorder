@@ -65,8 +65,7 @@
 #driveSummary:empty { display: none; }
 #driveSettings [hidden], #driveMainResult[hidden], #driveMainResult [hidden] { display: none !important; }
 #driveSettings button:focus-visible, #driveSettings summary:focus-visible, #driveSettings input:focus-visible, #driveMainResult button:focus-visible { outline: 2px solid #007aff; outline-offset: 3px; }
-.drive-profile, .background-box .drive-main-profile { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.drive-profile { margin: 12px 0; }
+.drive-profile { display: flex; align-items: center; gap: 10px; min-width: 0; margin: 12px 0; }
 .drive-avatar-wrap { position: relative; display: block; flex: 0 0 36px; width: 36px; height: 36px; }
 .drive-avatar, .drive-avatar-fallback { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; }
 .drive-avatar { object-fit: cover; }
@@ -75,9 +74,18 @@
 .drive-profile-text strong, .drive-profile-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drive-profile-text strong { font-size: 13px; color: #344054; font-weight: 600; }
 .drive-profile-text small { color: #667085; font-size: 11px; font-weight: 400; }
-.background-box .drive-main-profile { box-sizing: border-box; width: 100%; height: auto; margin: -10px 0 16px; padding: 8px 10px; border: 1px solid #edf0f4; border-radius: 11px; background: #f8fafc; box-shadow: none; }
-.drive-main-profile .drive-avatar-wrap { flex-basis: 28px; width: 28px; height: 28px; }
-.drive-main-profile .drive-profile-text strong { font-size: 11px; }
-.drive-main-profile .drive-profile-text small { font-size: 10px; }
-.drive-main-profile[hidden], .drive-main-profile [hidden] { display: none !important; }
-.drive-main-profile:focus-visible { outline: 2px solid #007aff; outline-offset: 3px; }
+.recorder-header-tools #driveMainProfile {
+    box-sizing: border-box; position: relative; display: grid; place-items: center;
+    flex: 0 0 28px; width: 28px; height: 28px; margin: 0; padding: 3px;
+    border: 0; border-radius: 9px; background: transparent; box-shadow: none;
+}
+#driveMainProfile .drive-cloud-icon { display: block; width: 22px; height: 22px; filter: grayscale(1); opacity: .6; }
+#driveMainProfile[data-connected="true"] .drive-cloud-icon { filter: none; opacity: 1; }
+#driveMainProfile .drive-cloud-slash {
+    position: absolute; left: 13px; top: 1px; width: 2px; height: 26px;
+    border-radius: 2px; background: #7a8591; box-shadow: 0 0 0 1px #fff;
+    transform: rotate(-42deg); pointer-events: none;
+}
+#driveMainProfile[data-connected="true"] .drive-cloud-slash { display: none; }
+#driveMainProfile:hover { background: #f0f6ff; }
+#driveMainProfile:focus-visible { outline: 2px solid #007aff; outline-offset: 3px; }

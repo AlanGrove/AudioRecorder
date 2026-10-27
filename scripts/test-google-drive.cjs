@@ -7,10 +7,10 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'google-drive.js'), 'u
 const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const KEY = 'audioRecorderDriveSettings';
 
-test('连接后设置及主页面显示头像用户名，图片失败时保留姓名首字', async () => {
+test('连接后主页显示已连接云端图标，设置保留账号及头像回退', async () => {
     const h = harness(); await h.connect();
     assert.equal(h.el('driveProfileName').textContent, 'Test account');
-    assert.equal(h.el('driveMainProfileName').textContent, 'Test account');
+    assert.equal(h.el('driveMainProfile').getAttribute('data-connected'), 'true');
     assert.equal(h.el('driveAvatar').getAttribute('src'), 'https://lh3.googleusercontent.com/test-photo');
     assert.equal(h.el('driveProfileEmail').textContent, 'test@example.invalid');
     await h.fire('driveAvatar', 'error');
@@ -37,7 +37,7 @@ test('后端会话自动恢复，刷新后无需弹窗，授权仅保留在内�
     const h = harness({ backend: true, backendSession: true });
     await h.until(() => h.el('driveConnect').textContent === '已连接');
     assert.equal(h.authCalls.length, 0);
-    assert.equal(h.el('driveMainProfile').hidden, false);
+    assert.equal(h.el('driveMainProfile').getAttribute('data-connected'), 'true');
     const again = harness({ backend: true, backendSession: true, stored: h.stored });
     await again.until(() => again.el('driveConnect').textContent === '已连接');
     assert.equal(again.authCalls.length, 0);
@@ -71,12 +71,12 @@ test('断开清除账号、关闭自动上传并退出后端，下次打开不�
     await h.fire('driveDisconnect');
     await h.until(() => h.el('driveStatus').textContent.includes('已断开连接'));
     assert.equal(h.state.backendSession, false);
-    assert.equal(h.el('driveMainProfile').hidden, true);
+    assert.equal(h.el('driveMainProfile').getAttribute('data-connected'), 'false');
     const prefs = JSON.parse(h.stored.get(KEY));
     assert.equal(prefs.autoUpload, false); assert.equal(prefs.rememberConnection, false);
     const again = harness({ backend: true, stored: h.stored });
     await again.until(() => !again.el('driveConnect').disabled);
-    assert.equal(again.el('driveMainProfile').hidden, true);
+    assert.equal(again.el('driveMainProfile').getAttribute('data-connected'), 'false');
 });
 
 test('断开时网络失败会记住退出请求，下次打开先退出并不恢复授权', async () => {
@@ -94,7 +94,7 @@ test('Chrome 插件下次打开用浏览器缓存静默恢复且不申请新权�
     const h = harness({ extension: true, manifest: { oauth2: { client_id: 'test.apps.googleusercontent.com' } },
         settings: { rememberConnection: true } });
     await h.until(() => h.el('driveConnect').textContent === '已连接');
-    assert.equal(h.el('driveMainProfileName').textContent, 'Test account');
+    assert.equal(h.el('driveMainProfile').getAttribute('data-connected'), 'true');
 });
 
 test('后端连接遇到 Google 401 会强制续期一次并继续原上传', async () => {
@@ -112,7 +112,7 @@ test('恢复期间用户断开，延迟返回的授权不会重新显示已连�
     let release; h.state.brokerHold = new Promise(resolve => { release = resolve; });
     await h.fire('driveDisconnect'); release();
     await new Promise(resolve => setImmediate(resolve));
-    assert.equal(h.el('driveMainProfile').hidden, true);
+    assert.equal(h.el('driveMainProfile').getAttribute('data-connected'), 'false');
     assert.equal(JSON.parse(h.stored.get(KEY)).rememberConnection, false);
     assert.ok(!h.el('driveStatus').textContent.includes('连接已恢复'));
 });
