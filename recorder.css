@@ -49,8 +49,9 @@ body {
 .background-box .timer-line { white-space: nowrap; }
 .background-box #timer {
     display: inline-block; color: #20ad66; cursor: pointer;
-    font: 500 46px/1.08 ui-monospace, "SFMono-Regular", Consolas, monospace;
-    letter-spacing: -2px; font-variant-numeric: tabular-nums;
+    font: 900 46px/1.08 "Arial Black", "Segoe UI", Arial, sans-serif;
+    letter-spacing: .5px; font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "zero" 0;
 }
 .recorder-time-adjust { display: flex; justify-content: flex-end; align-items: center; gap: 5px; margin-top: 8px; color: #7a8591; font-size: 11px; }
 .recorder-time-adjust #timeAdjust { box-sizing: border-box; width: 40px; margin: 0; padding: 3px 4px; border: 1px solid #e8edf1; border-radius: 5px; color: #7a8591; background: #fff; font-size: 11px; }
@@ -116,7 +117,7 @@ body {
     .recorder-preferences { gap: 6px; }
     .recorder-preferences label, .recorder-preferences select { font-size: 10px; }
     .background-box .timer-row { gap: 12px; }
-    .background-box #timer { font-size: 38px; letter-spacing: -1.5px; }
+    .background-box #timer { font-size: 38px; letter-spacing: .3px; }
     .background-box .controls button { font-size: 11px; gap: 3px; padding: 0 4px; }
     .background-box .controls button svg { width: 12px; height: 12px; flex-basis: 12px; }
 }

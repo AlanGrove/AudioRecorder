@@ -209,3 +209,5 @@ Cloudflare 出站请求使用 `redirect: "manual"` 并拒绝意外 3xx，不使�
 输入设备下拉位于选择比特率左侧，选择保存在当前浏览器，下次录音使用所选设备。加载页面只枚举设备，不请求麦克风；首次开始录音授权后可显示完整设备名称。录音期间不可切换设备，停止后可重新选择；所选设备移除时会提示并回退默认，录音请求失败不会偷偷改用另一个麦克风。
 
 设备逻辑测试：`node --test scripts/test-input-devices.cjs`。手工检查：切换设备、刷新恢复、录音时设备锁定、停止解锁和 USB 麦克风拔插；标题自动上传与设置双向同步。未修改版本号，未打包 ZIP。图标来源：[Google Workspace 官方资源](https://knowledge.workspace.google.com/static/images/icons/product/drive.svg)，本地保存后随页面提供，不在每次打开时请求 Google 图标站点。
+
+时间码字体调整（未发版）：改为 Arial Black 优先的粗体无衬线数字，取消斜线零，保留绿色和桌面 46px / 窄窗口 38px 字号。时间码点击复制及样式复制功能保持原逻辑。版本仍为 1.23，未打包。
