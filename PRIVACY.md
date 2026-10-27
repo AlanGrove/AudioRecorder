@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Audio Recorder records audio only after the user clicks the recording button and grants microphone permission in Chrome.
+Audio Recorder records audio only after the user clicks the recording button and grants microphone permission in Chrome. Device enumeration on page load does not request microphone access; device names may remain hidden until permission is granted. The selected input is used for the next recording, and switching inputs is disabled while recording.
 
 ## Data Collection
 
@@ -12,7 +12,7 @@ Audio is processed locally in the browser. Completed MP3 and WebM recordings are
 
 ## Local Storage
 
-The app stores local preferences in the browser, including file naming, copy preference, start date, automatic MP3 download, the public Google OAuth client ID, cloud folder name, upload format and automatic upload toggle. Settings are not synchronized across devices or browser origins.
+The app stores local preferences in the browser, including the selected microphone device ID, file naming, copy preference, start date, automatic MP3 download, the public Google OAuth client ID, cloud folder name, upload format and automatic upload toggle. Settings are not synchronized across devices or browser origins.
 
 ## Network Access
 

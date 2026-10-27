@@ -178,6 +178,8 @@
         element('driveSetup').hidden = configured;
         element('driveConnectStep').textContent = configured ? '1' : '2';
         element('driveAutoUpload').checked = settings.autoUpload;
+        element('driveAutoUploadMain').checked = settings.autoUpload;
+        element('driveAutoUploadMain').setAttribute('title', '停止录音后自动上传 ' + settings.format.toUpperCase());
         element('driveConnect').disabled = authorizing || disconnecting || Boolean(pumping) || connected();
         element('driveConnect').textContent = authorizing ? '正在连接…' : connected() ? '已连接' : '连接 Google Drive';
         element('driveSwitchAccount').hidden = !connected() || extension;
@@ -755,16 +757,21 @@
             event.target.value = settings.folderName;
             save();
         });
-        element('driveAutoUpload').addEventListener('change', event => {
+        function changeAutoUpload(event) {
             if (event.target.checked && !connected()) {
                 event.target.checked = false;
                 message('请先连接 Google Drive，再开启自动上传。', true);
+                render();
+                if (event.target === element('driveAutoUploadMain') && !element('driveSettings').open) element('driveSettings').showModal();
                 return;
             }
             settings.autoUpload = event.target.checked;
             save();
+            render();
             message(settings.autoUpload ? '已开启：之后每次录音停止都会自动上传。' : '已关闭自动上传，已排队的上传会继续完成。');
-        });
+        }
+        element('driveAutoUpload').addEventListener('change', changeAutoUpload);
+        element('driveAutoUploadMain').addEventListener('change', changeAutoUpload);
         element('driveConnect').addEventListener('click', () => void connect());
         element('driveSwitchAccount').addEventListener('click', () => void connect(true));
         element('driveDisconnect').addEventListener('click', () => void disconnect());

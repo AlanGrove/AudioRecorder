@@ -30,7 +30,7 @@ document.getElementById('fixtureAdd').onclick=async()=>{
  document.getElementById('fixtureState').textContent='已生成（合成静音）';
 };
 </script>`;
-const types = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png'};
+const types = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png','.svg':'image/svg+xml'};
 http.createServer((req,res)=>{
  const url=new URL(req.url,'http://127.0.0.1');
  if(url.pathname==='/drive-backend-config.js'){res.setHeader('Content-Type',types['.js']);res.end("window.AudioRecorderDriveBackendUrl='';");return;}

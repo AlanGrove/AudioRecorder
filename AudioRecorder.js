@@ -709,6 +709,7 @@ async function createMp3InputProcessor(audioContext, source) {
     };
 }
 function stopActiveAudioResources() {
+    window.AudioRecorderInputs?.setLocked(false);
     if (waveformAnimationId) {
         cancelAnimationFrame(waveformAnimationId);
         waveformAnimationId = null;
@@ -802,7 +803,8 @@ document.getElementById('toggle').addEventListener('click', async () => {
         }
 
         window.AudioRecorderDrive?.setRecording(null);
-        navigator.mediaDevices.getUserMedia({ audio: true })
+        button.disabled = true;
+        (window.AudioRecorderInputs?.getStream() || navigator.mediaDevices.getUserMedia({ audio: true }))
             .then(async stream => {
                 activeAudioStream = stream;
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -895,6 +897,7 @@ document.getElementById('toggle').addEventListener('click', async () => {
                         console.error('录音处理失败:', error);
                         alert('录音处理失败，请保留当前页面并尝试下载录音。');
                     } finally {
+                        window.AudioRecorderInputs?.setLocked(false);
                         isFinalizingRecording = false;
                         button.disabled = false;
                         document.getElementById('recorderStatus').textContent = '准备录音';
@@ -902,6 +905,7 @@ document.getElementById('toggle').addEventListener('click', async () => {
                 };
 
                 mediaRecorder.start();
+                button.disabled = false;
                 startTimer();
                 button.classList.add('recording');
                 button.setAttribute('aria-label', '停止录音');
@@ -910,6 +914,7 @@ document.getElementById('toggle').addEventListener('click', async () => {
                 document.title = '🔴⏰正在录音中...';  // 更新网页标题为录音中
             })
             .catch(error => {
+                button.disabled = false;
                 stopActiveAudioResources();
                 console.error("无法访问媒体设备:", error);
                 alert("无法访问麦克风，请检查权限设置。");

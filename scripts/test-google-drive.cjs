@@ -306,6 +306,17 @@ test('默认不上传，未连接不能开启自动上传', async () => {
     assert.match(h.el('driveStatus').textContent, /先连接/);
 });
 
+test('标题自动上传开关与设置同步，未连接时打开连接设置且不会误开启', async () => {
+    const h = harness();
+    h.el('driveAutoUploadMain').checked = true; await h.fire('driveAutoUploadMain', 'change');
+    assert.equal(h.el('driveAutoUploadMain').checked, false); assert.equal(h.el('driveSettings').open, true);
+    await h.connect();
+    h.el('driveAutoUploadMain').checked = true; await h.fire('driveAutoUploadMain', 'change');
+    assert.equal(h.el('driveAutoUpload').checked, true); assert.equal(JSON.parse(h.stored.get(KEY)).autoUpload, true);
+    h.el('driveAutoUpload').checked = false; await h.fire('driveAutoUpload', 'change');
+    assert.equal(h.el('driveAutoUploadMain').checked, false);
+});
+
 test('JSON 导入只保存客户端 ID，拒绝错误类型', async () => {
     const h = harness();
     h.el('driveConfigFile').files = [{ size: 100, text: async () => JSON.stringify({

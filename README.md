@@ -201,3 +201,11 @@ Cloudflare 出站请求使用 `redirect: "manual"` 并拒绝意外 3xx，不使�
 测试：原有 Drive / Worker 测试加列表上传、跨刷新去重测试使用 `node --test scripts/test-google-drive.cjs scripts/test-drive-backend.mjs`。录音库事务测试需先在本机测试依赖目录安装 `fake-indexeddb@6.2.4`，将该目录的 node_modules 加入 NODE_PATH，再运行 `node --test scripts/test-recording-library.cjs`。覆盖音频 Blob 重开、排序、事务失败、并发写回、清空后不复活和数据库不可用。手工验证：完成一段录音 → 打开列表 → 刷新后重新查看/播放 → 上传 → 点击分享链接复制 → 清空/取消清空。版本保持 1.23，不生成 ZIP。
 
 本地界面测试：运行 `node scripts/preview-recording-library.cjs` 后打开 `http://127.0.0.1:4174/`。通过“生成测试录音”检查保存、刷新恢复、列表播放、上传后分享链接及清空流程；测试页只生成合成静音，Google 请求均为模拟，不访问真实云盘。
+
+### 标题栏开关与输入设备（未发版调整）
+
+标题“音频录制器 1.23”右侧放置自动下载、自动上传开关，以及缩小后的 Google 官方渐变 Drive 图标。自动上传开关与云端设置同步，未连接时引导连接，不会误开启。自动下载仍控制 MP3，自动上传格式遵循云端设置。
+
+输入设备下拉位于选择比特率左侧，选择保存在当前浏览器，下次录音使用所选设备。加载页面只枚举设备，不请求麦克风；首次开始录音授权后可显示完整设备名称。录音期间不可切换设备，停止后可重新选择；所选设备移除时会提示并回退默认，录音请求失败不会偷偷改用另一个麦克风。
+
+设备逻辑测试：`node --test scripts/test-input-devices.cjs`。手工检查：切换设备、刷新恢复、录音时设备锁定、停止解锁和 USB 麦克风拔插；标题自动上传与设置双向同步。未修改版本号，未打包 ZIP。图标来源：[Google Workspace 官方资源](https://knowledge.workspace.google.com/static/images/icons/product/drive.svg)，本地保存后随页面提供，不在每次打开时请求 Google 图标站点。

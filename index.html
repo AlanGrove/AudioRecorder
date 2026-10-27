@@ -912,12 +912,16 @@ button {
     <div class="recorder-title-row">
         <h1>音频录制器 <span class="recorder-version">1.23</span></h1>
         <div class="recorder-header-tools">
+        <label class="auto-download-switch header-toggle" data-tooltip="自动下载 MP3" title="自动下载 MP3">
+            <input type="checkbox" id="autoDownloadToggle" aria-label="自动下载 MP3" role="switch" checked>
+            <span class="switch-track" aria-hidden="true"></span><span>自动下载</span>
+        </label>
+        <label class="auto-download-switch header-toggle" data-tooltip="自动上传录音" title="自动上传录音">
+            <input type="checkbox" id="driveAutoUploadMain" aria-label="自动上传录音" role="switch">
+            <span class="switch-track" aria-hidden="true"></span><span>自动上传</span>
+        </label>
         <button id="driveMainProfile" class="drive-main-cloud" type="button" data-connected="false" aria-label="连接 Google 云端，打开设置" title="连接 Google 云端，打开设置" aria-haspopup="dialog" aria-controls="driveSettings">
-            <svg class="drive-cloud-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path fill="#0F9D58" d="M8 2 1 14l4 7 7-12z"/>
-                <path fill="#F4B400" d="M8 2h8l7 12h-8z"/>
-                <path fill="#4285F4" d="M1 14h22l-4 7H5l4-7z"/>
-            </svg>
+            <img class="drive-cloud-icon" src="icons/google-drive.svg" alt="" width="18" height="18">
             <span class="drive-cloud-slash" aria-hidden="true"></span>
         </button>
         <button id="driveSettingsButton" type="button" aria-label="设置" title="设置" aria-haspopup="dialog" aria-controls="driveSettings">
@@ -967,12 +971,9 @@ button {
 
     
     <div class="recorder-preferences">
-        <label class="auto-download-switch" data-tooltip="自动下载 MP3">
-            <input type="checkbox" id="autoDownloadToggle" aria-label="自动下载 MP3" checked>
-            <span class="switch-track" aria-hidden="true"></span><span class="auto-download-label">自动下载 MP3</span>
-        </label>
+        <div class="recorder-input"><label for="inputDevice">输入设备</label><select id="inputDevice" aria-describedby="inputDeviceStatus"><option value="">默认输入</option></select></div>
         <div class="recorder-quality">
-        <label for="bitrate">选择比特率：</label>
+        <label for="bitrate">选择比特率</label>
         <select id="bitrate">
             <option value="8">8 kbps</option>.
             <option value="16" selected >16 kbps</option>
@@ -995,6 +996,7 @@ button {
         </div>
     </div>
 
+        <p id="inputDeviceStatus" class="input-device-status" role="status" aria-live="polite" hidden></p>
         <section class="filename-builder" aria-label="录音文件命名规则">
         <button type="button" class="filename-preview" id="filenamePreview" aria-expanded="false" aria-controls="filenameSettingsPanel">名称：20260101XX名字001.mp3</button>
         <div class="filename-settings-panel" id="filenameSettingsPanel">
@@ -1040,6 +1042,7 @@ button {
 <script src="drive-backend-config.js"></script>
 <script src="recording-library.js"></script>
 <script src="google-drive.js"></script>
+<script src="input-devices.js"></script>
 <script src="AudioRecorder.js"></script>
     <script src="lamejs.iife.js"></script>
 </body>

@@ -9,14 +9,20 @@ body {
     box-shadow: 0 14px 40px #20334712;
 }
 .background-box .recorder-title-row {
-    justify-content: space-between; gap: 10px; margin: 0 0 22px;
+    justify-content: space-between; gap: 8px; margin: 0 0 22px;
 }
 .background-box .recorder-title-row h1 { color: #20ad66; font-size: 14px; font-weight: 600; white-space: nowrap; }
 .background-box .recorder-version { color: #7a8591; font-size: 11px; font-weight: 400; margin-left: 4px; }
-.recorder-header-tools { display: flex; align-items: center; gap: 7px; }
+.recorder-header-tools { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.recorder-header-tools .header-toggle { display: inline-flex; align-items: center; gap: 3px; color: #7a8591; font-size: 10px; font-weight: 400; white-space: nowrap; }
+.recorder-header-tools .switch-track { width: 22px; height: 14px; background: #d9dfe5; box-shadow: none; }
+.recorder-header-tools .switch-track::after { width: 10px; height: 10px; box-shadow: none; }
+.recorder-header-tools .header-toggle input:checked + .switch-track { background: #20ad66; box-shadow: none; }
+.recorder-header-tools .header-toggle input:checked + .switch-track::after { transform: translateX(8px); }
+.recorder-header-tools .header-toggle:focus-within .switch-track { outline: 2px solid #2384dc; outline-offset: 3px; }
 .recorder-header-tools #driveSettingsButton {
-    box-sizing: border-box; position: relative; top: auto; right: auto; width: 28px;
-    height: 28px; min-width: 28px; padding: 6px; border: 0; border-radius: 9px;
+    box-sizing: border-box; position: relative; top: auto; right: auto; width: 22px;
+    height: 22px; min-width: 22px; padding: 3px; border: 0; border-radius: 7px;
     color: #7a8591; background: #f6f8fa; box-shadow: none;
 }
 .recorder-header-tools #driveSettingsButton svg { width: 16px; height: 16px; }
@@ -52,14 +58,16 @@ body {
     display: block; box-sizing: border-box; width: 100%; height: 28px; margin: 2px 0 15px;
     border: 0; border-radius: 8px; background: #edf9f2;
 }
-.recorder-preferences { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 13px; }
-.recorder-preferences .auto-download-switch { gap: 6px; font-weight: 400; color: #7a8591; }
-.recorder-preferences .switch-track { width: 25px; height: 15px; box-shadow: none; background: #d9dfe5; }
-.recorder-preferences .switch-track::after { width: 11px; height: 11px; box-shadow: none; }
-.recorder-preferences .auto-download-switch input:checked + .switch-track { background: #20ad66; box-shadow: none; }
-.recorder-quality { display: flex; align-items: center; gap: 5px; }
-.recorder-quality label[for="bitrate"] { color: #7a8591; font-size: 11px; font-weight: 400; }
-.recorder-quality #bitrate { padding: 3px 5px; border: 1px solid #e8edf1; border-radius: 6px; color: #233142; background: #fff; font-size: 11px; font-weight: 400; }
+.recorder-preferences { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 13px; }
+.recorder-input, .recorder-quality { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.recorder-input { flex: 1; }
+.recorder-quality { flex-shrink: 0; }
+.recorder-preferences label { flex-shrink: 0; color: #7a8591; font-size: 11px; font-weight: 400; }
+.recorder-preferences select { min-width: 0; padding: 3px 5px; border: 1px solid #e8edf1; border-radius: 6px; color: #233142; background: #fff; font-size: 11px; font-weight: 400; }
+.recorder-input #inputDevice { flex: 1; width: 100%; max-width: 155px; text-overflow: ellipsis; }
+.recorder-input #inputDevice:disabled { opacity: .6; }
+.input-device-status { color: #a45224; margin: -5px 0 10px; font-size: 11px; text-align: left; }
+.input-device-status[hidden] { display: none; }
 .background-box .filename-builder { width: 100%; margin: 0; }
 .background-box .filename-preview {
     box-sizing: border-box; width: 100%; min-height: 34px; height: auto; margin: 0;
@@ -98,6 +106,15 @@ body {
 @media (max-width: 380px) {
     body { padding: 16px 10px; }
     .background-box { padding: 18px 14px; }
+    .background-box .recorder-title-row { gap: 5px; }
+    .background-box .recorder-title-row h1 { font-size: 12px; }
+    .background-box .recorder-version { font-size: 10px; margin-left: 2px; }
+    .recorder-header-tools { gap: 3px; }
+    .recorder-header-tools .header-toggle { gap: 2px; font-size: 9px; }
+    .recorder-header-tools .switch-track { width: 20px; height: 12px; }
+    .recorder-header-tools .switch-track::after { width: 8px; height: 8px; }
+    .recorder-preferences { gap: 6px; }
+    .recorder-preferences label, .recorder-preferences select { font-size: 10px; }
     .background-box .timer-row { gap: 12px; }
     .background-box #timer { font-size: 38px; letter-spacing: -1.5px; }
     .background-box .controls button { font-size: 11px; gap: 3px; padding: 0 4px; }
