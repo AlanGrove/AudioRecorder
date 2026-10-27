@@ -2,6 +2,32 @@
 
 Audio Recorder 是一个 Chrome Manifest V3 本地录音扩展。它在用户主动点击录音按钮后请求麦克风权限，在本地生成 WebM 录音和 MP3 文件，并通过浏览器下载到本机。
 
+## 安全审核与加固（未发版）
+
+完整报告见 [SECURITY_AUDIT.md](SECURITY_AUDIT.md)，包括依赖版本、问题位置、利用条件、修复与剩余风险。初次审核仅修改本地源码；经维护者确认继续，安全修复现已同步网页与 Cloudflare Worker。沿用 1.23，未生成 ZIP、未创建正式 Release，线上验收进度见报告第 8 节。
+
+- 授权后端在加密后通过事务复查会话版本，避免退出时被迟到的授权/刷新请求重新写回；Google 出站请求增加 15 秒超时。
+- 发布流程把标签作为环境数据读取并严格校验数字版本；三个 Action 固定到完整提交 SHA，关闭 checkout 的凭据持久化。未来正式发布的 ZIP 统一放在 `outputs`，本次不触发发布。
+- 两个页面增加 CSP，限制脚本、对象与表单，保留 Google 官方授权 SDK 和本地音频播放；HTTPS 授权后端仍可配置。
+- 本地预览服务只开放明确的静态资源，校验 Host/Origin，拒绝配置文件及异常 URL，不再暴露整个项目目录。
+- 增加依赖锁文件，声明原有 IndexedDB 测试所需的 `fake-indexeddb`；检查脚本覆盖 `.mjs/.cjs/.toml`、OAuth JSON 和 `.dev.vars`。`backend/.env.example` 只有两个密钥变量名，真实值仍通过 Worker Secret 配置。
+
+从项目源码目录运行：
+
+```powershell
+cd backend
+npm ci --ignore-scripts
+npm test
+npm run test:runtime
+npm audit --package-lock-only
+cd ..
+pwsh -NoProfile -File scripts/validate-release.ps1 -ExpectedVersion 1.23
+```
+
+`npm ci --ignore-scripts` 避免安装时执行生命周期脚本；测试和构建会显式运行已锁定的官方开发工具。浏览器测试页为 `node scripts/preview-recording-library.cjs`，仅使用合成音频和模拟云盘，不应对外网开放。
+
+录音库和授权边界以浏览器“来源”隔离，而不是网址路径。当前 GitHub Pages 同账号的其他项目共用来源，独立域名隔离按维护者选择留待后续；服务端 `/auth/start` 的边缘限流也需另行确定额度。当前本地缓存已被忽略不等于历史泄露凭据失效：如果确认密钥或部署令牌曾公开，应到对应平台撤销并重新生成，而不是只删除文件；不要随意更换 `TOKEN_ENCRYPTION_KEY`，否则旧会话无法解密。
+
 ## 功能说明
 
 - 用户点击扩展图标后打开录音页面。
