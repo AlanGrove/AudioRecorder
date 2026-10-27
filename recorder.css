@@ -45,6 +45,11 @@ body {
 .recorder-clock { min-width: 0; text-align: left; }
 .recorder-state { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; color: #7a8591; font-size: 11px; }
 .recorder-state-dot { display: block; width: 5px; height: 5px; border-radius: 50%; background: #20ad66; }
+.recording-protection { margin: 6px 0 0; color: #7a8591; font-size: 10px; text-align: left; }
+.recording-protection.is-error { color: #a45224; }
+.recording-protection[hidden], .recovery-notice[hidden] { display: none; }
+.recovery-notice { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 13px; padding: 10px; border: 1px solid #f2dfbd; border-radius: 10px; background: #fffbf2; color: #976021; font-size: 11px; text-align: left; }
+.background-box #recoveryOpen { flex-shrink: 0; width: auto; height: auto; padding: 5px 8px; border: 0; border-radius: 7px; box-shadow: none; color: #976021; background: #f9ebcf; font-size: 11px; }
 .timer-row:has(#toggle.recording) .recorder-state-dot { background: #eb5656; }
 .background-box .timer-line { white-space: nowrap; }
 .background-box #timer {

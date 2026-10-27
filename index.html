@@ -816,8 +816,8 @@ button {
 
   <link rel="stylesheet" href="shared/module-switcher.css">
   <link rel="stylesheet" href="google-drive.css">
-  <link rel="stylesheet" href="recorder.css?style=bold-timer">
-  <link rel="stylesheet" href="recording-library.css">
+  <link rel="stylesheet" href="recorder.css?style=recovery-checkpoint">
+  <link rel="stylesheet" href="recording-library.css?recovery=checkpoint">
 </head>
 <body>
 <dialog id="driveSettings" aria-labelledby="driveSettingsTitle">
@@ -901,12 +901,13 @@ button {
 <dialog id="recordingLibrary" aria-labelledby="libraryTitle">
     <div class="library-header"><div><h2 id="libraryTitle">录音列表</h2><p id="libraryCount">保存在此浏览器</p></div><button id="libraryClose" type="button" aria-label="关闭录音列表">×</button></div>
     <p class="library-note">录音保存在当前浏览器，可播放、下载或上传。分享链接点击即复制，访问权限由 Google Drive 控制。</p>
+    <div id="libraryRecoveryRows" aria-label="中断录音备份"></div>
     <div id="libraryRows"></div>
     <p id="libraryStatus" role="status" aria-live="polite"></p>
     <input id="libraryCopyFallback" type="text" aria-label="可手动复制的分享链接" readonly hidden>
     <audio id="libraryPlayer" controls hidden></audio>
-    <div class="library-footer"><button id="libraryClear" type="button">清空列表</button><span>仅清除浏览器副本，保留云端文件</span></div>
-    <div id="libraryClearConfirm" class="library-clear-confirm" hidden><p>确定清空所有本地录音？未下载或上传的文件将无法找回。</p><button id="libraryClearCancel" type="button">取消</button><button id="libraryClearConfirmButton" type="button">确认清空</button></div>
+    <div class="library-footer"><button id="libraryClear" type="button">清空列表</button><span>仅清空已保存列表，保留中断备份和云端文件</span></div>
+    <div id="libraryClearConfirm" class="library-clear-confirm" hidden><p>确定清空列表中已保存的录音？未下载或上传的文件将无法找回。</p><button id="libraryClearCancel" type="button">取消</button><button id="libraryClearConfirmButton" type="button">确认清空</button></div>
 </dialog>
 <div class="background-box">     
     <div class="recorder-title-row">
@@ -950,6 +951,7 @@ button {
     <div class="recorder-clock">
         <p class="recorder-state"><span class="recorder-state-dot" aria-hidden="true"></span><span id="recorderStatus" role="status" aria-live="polite">准备录音</span></p>
         <p class="timer-line"><span id="timer" title="点击复制时间码，双击选择复制样式">00:00:00</span></p>
+        <p id="recordingProtection" class="recording-protection" role="status" aria-live="polite" hidden></p>
         <label class="recorder-time-adjust" for="timeAdjust">时间校正 <input type="number" id="timeAdjust" placeholder="±秒" aria-label="时间校正秒数"></label>
     </div>
 </div>
@@ -968,6 +970,7 @@ button {
 </div>
 
     <canvas id="waveform"></canvas>
+    <section id="recoveryNotice" class="recovery-notice" hidden><span id="recoveryNoticeText"></span><button id="recoveryOpen" type="button">查看恢复</button></section>
 
     
     <div class="recorder-preferences">
@@ -1040,10 +1043,11 @@ button {
     <audio id="audioPlayback" controls></audio>
 </div>
 <script src="drive-backend-config.js"></script>
-<script src="recording-library.js"></script>
-<script src="google-drive.js?auth=relative-expiry"></script>
+<script src="recording-recovery.js?recovery=checkpoint"></script>
+<script src="recording-library.js?recovery=checkpoint"></script>
+<script src="google-drive.js?recovery=checkpoint"></script>
 <script src="input-devices.js?audio=raw-input"></script>
-<script src="AudioRecorder.js?audio=raw-input"></script>
+<script src="AudioRecorder.js?recovery=checkpoint"></script>
     <script src="lamejs.iife.js"></script>
 </body>
 </html>

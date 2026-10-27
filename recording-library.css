@@ -17,6 +17,10 @@
 .library-note { color: #7a8591; font-size: 11px; margin: 14px 0; }
 .library-row { margin: 10px 0; padding: 13px; border: 1px solid #e8edf1; border-radius: 13px; background: #fafbfd; }
 .library-row-heading { display: flex; align-items: start; justify-content: space-between; gap: 10px; }
+.library-recovery-row { border-color: #f2dfbd; background: #fffbf2; }
+.library-recovery-row > strong { display: block; font-size: 12px; overflow-wrap: anywhere; }
+.library-row-heading { flex-wrap: wrap; }
+#libraryRecoveryRows:not(:empty)::before { content: "中断录音备份 · 恢复后请先试听，录制中断期间无法补录"; display: block; margin-top: 16px; color: #976021; font-size: 12px; }
 .library-row-name { min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: 12px; font-weight: 600; }
 #recordingLibrary .library-cloud-action { flex-shrink: 0; border: 0; background: #eff6ff; color: #2384dc; white-space: nowrap; }
 .library-row-meta { margin: 5px 0 10px; color: #7a8591; font-size: 11px; }
@@ -24,7 +28,7 @@
 #recordingLibrary .library-row-actions button { padding: 4px 9px; background: #fff; font-size: 11px; }
 #recordingLibrary button:disabled { opacity: .5; cursor: default; }
 #recordingLibrary button:focus-visible, #libraryCopyFallback:focus-visible { outline: 2px solid #2384dc; outline-offset: 3px; }
-#libraryRows:empty::before { content: "还没有录音，完成录音后会自动保存在这里。"; display: block; padding: 32px 10px; color: #7a8591; text-align: center; }
+#libraryRows:empty::before { content: "暂无已保存录音。完成录音或恢复备份后会显示在这里。"; display: block; padding: 32px 10px; color: #7a8591; text-align: center; }
 #libraryStatus { margin: 12px 0; color: #2384dc; font-size: 12px; overflow-wrap: anywhere; }
 #libraryStatus:empty { display: none; }
 #libraryStatus.is-error, #libraryNotice { color: #a45224; }

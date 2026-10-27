@@ -555,7 +555,8 @@ function localLibrary() {
     const saved = new Map(), events = [];
     return { saved, events,
         save: async r => { saved.set(r.id, { ...r, uploads: {}, pending: {} }); return true; },
-        checkpoint: async (id, format, fileId, owner) => { events.push('checkpoint'); if(saved.has(id)) saved.get(id).pending[format] = { fileId, owner }; },
+        checkpoint: async (id, format, fileId, owner) => { events.push('checkpoint'); if(saved.has(id)) saved.get(id).pending[format] = { ...saved.get(id).pending[format], fileId, owner }; },
+        queueUpload: async (id, format, folderName) => { if(saved.has(id)) saved.get(id).pending[format] = { ...saved.get(id).pending[format], folderName, status:'queued' }; },
         uploaded: async (id, format, result, owner) => { events.push('uploaded'); if(saved.has(id)) { saved.get(id).uploads[format] = { id: result.id, owner }; delete saved.get(id).pending[format]; } },
         setUploadState() {}, isClearing: () => false
     };
@@ -592,4 +593,37 @@ test('未连接时列表上传引导连接，不提交音频；清空后不能�
     h.drive.clearLibraryQueue();
     assert.equal(h.el('driveRetry').hidden,true); assert.equal(h.el('driveUploadCurrent').disabled,true);
     assert.equal(h.drive.isBusy(),false);
+});
+
+test('重开后核对已完成的云端文件并恢复分享链接，不重新提交音频', async () => {
+    const library=localLibrary(), h=harness({library}); await h.connect();
+    h.state.lostFinal=true; h.drive.setRecording(h.recording('reconcile'));
+    assert.equal(await h.drive.uploadRecording(library.saved.get('reconcile')),false);
+    const reopened=harness({library,completed:h.completed}); await reopened.connect();
+    assert.equal(await reopened.drive.reconcileRecording(library.saved.get('reconcile'),'mp3'),true);
+    assert.equal(reopened.uploads().length,0); assert.ok(library.saved.get('reconcile').uploads.mp3.id);
+    assert.equal(library.saved.get('reconcile').pending.mp3,undefined);
+});
+
+test('云端账号或文件大小不匹配时不误标为已上传，保留继续上传状态', async () => {
+    const library=localLibrary(), h=harness({library}); await h.connect();
+    h.state.lostFinal=true; h.drive.setRecording(h.recording('mismatch'));
+    await h.drive.uploadRecording(library.saved.get('mismatch'));
+    const record=library.saved.get('mismatch'), owner=record.pending.mp3.owner;
+    record.pending.mp3.owner='different-account';
+    assert.equal(await h.drive.reconcileRecording(record,'mp3'),false);
+    record.pending.mp3.owner=owner;
+    h.completed.get(record.pending.mp3.fileId).size='123456';
+    assert.equal(await h.drive.reconcileRecording(record,'mp3'),false);
+    assert.ok(record.pending.mp3.fileId); assert.equal(record.uploads.mp3,undefined);
+});
+
+test('恢复上传沿用中断时的格式及文件夹，不受当前设置改变影响', async () => {
+    const library=localLibrary(), h=harness({library,settings:{format:'mp3',folderName:'新文件夹'}}); await h.connect();
+    h.drive.setRecording(h.recording('resume-webm')); const record=library.saved.get('resume-webm');
+    record.pending.webm={folderName:'原文件夹',status:'queued'};
+    assert.equal(await h.drive.uploadRecording(record,'webm'),true);
+    assert.equal(JSON.parse(h.uploads()[0].body).name,'resume-webm.webm');
+    const lookup=h.calls.find(c=>new URL(c.url).searchParams.has('q'));
+    assert.match(new URL(lookup.url).searchParams.get('q'),/原文件夹/); assert.ok(record.uploads.webm.id);
 });

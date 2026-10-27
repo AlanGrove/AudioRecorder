@@ -335,6 +335,7 @@
             }
         }, Math.max(0, tokenExpires - tokenClock()));
         render();
+        void window.AudioRecorderLibrary?.reconcileUploads?.();
     }
     async function nativeToken(interactive) {
         const allowed = interactive ? await chrome.permissions.request({ origins: [API + '/*'] }) :
@@ -607,8 +608,8 @@
     async function queueCurrent() {
         return queueRecording(currentRecording);
     }
-    async function queueRecording(recording) {
-        const format = settings.format;
+    async function queueRecording(recording, requestedFormat) {
+        const format = ['mp3','webm'].includes(requestedFormat) ? requestedFormat : settings.format;
         if (window.AudioRecorderLibrary?.isClearing()) { message('正在清空本地列表，请稍后再上传。', true); return false; }
         if (recordingSaves.has(recording?.id)) await recordingSaves.get(recording.id);
         if (restoring) await restoring;
@@ -630,18 +631,19 @@
             const file = recording[format];
             if (!file?.blob?.size) { message('当前录音没有可上传的音频数据。', true); return false; }
             const checkpoint = recording.pending?.[format];
-            job = { key, blob: file.blob, name: file.name, folderName: settings.folderName,
+            job = { key, blob: file.blob, name: file.name, folderName: checkpoint?.folderName || settings.folderName,
                 recordingId: recording.id, format,
                 status: 'queued', offset: 0, fileId: checkpoint?.fileId || null, session: null, owner: checkpoint?.owner || null };
             jobs.push(job);
         } else if (job.status === 'failed') job.status = 'queued';
+        job.persisted = await window.AudioRecorderLibrary?.queueUpload?.(recording.id, format, job.folderName) === true;
         window.AudioRecorderLibrary?.setUploadState(recording.id, 'queued');
         await pump();
         return job.status === 'done';
     }
-    function setRecording(recording) {
+    function setRecording(recording, options = {}) {
         currentRecording = recording;
-        if (recording && window.AudioRecorderLibrary) {
+        if (recording && window.AudioRecorderLibrary && options.save !== false) {
             const saving = window.AudioRecorderLibrary.save(recording);
             recordingSaves.set(recording.id, saving);
             void saving.finally(() => recordingSaves.delete(recording.id));
@@ -653,7 +655,7 @@
         render();
         if (recording && settings.autoUpload) void queueCurrent();
     }
-    async function uploadRecording(recording) {
+    async function uploadRecording(recording, format) {
         if (restoring) await restoring;
         if (!connected()) {
             element('recordingLibrary')?.close();
@@ -661,7 +663,19 @@
             message('请先连接 Google Drive，再返回录音列表点击上传。', true);
             return false;
         }
-        return queueRecording(recording);
+        return queueRecording(recording, format);
+    }
+    async function reconcileRecording(recording, format) {
+        const pending = recording.pending?.[format];
+        if (!connected() || !pending?.fileId || pending.owner !== account.permissionId ||
+            jobs.some(j => j.key === recording.id + ':' + format && ['queued','uploading'].includes(j.status))) return false;
+        const response = await request(API + '/drive/v3/files/' + encodeURIComponent(pending.fileId) + '?fields=id,name,size,webViewLink', {}, [404]);
+        if (!response.ok) return false;
+        const result = await response.json();
+        const size = recording[format]?.size || recording[format]?.blob?.size;
+        if (result.id !== pending.fileId || String(result.size) !== String(size)) return false;
+        await window.AudioRecorderLibrary?.uploaded(recording.id, format, result, pending.owner);
+        return true;
     }
     function clearLibraryQueue() {
         if (jobs.some(j => j.status === 'queued' || j.status === 'uploading')) return;
@@ -794,7 +808,7 @@
             void pump();
         });
         window.addEventListener('beforeunload', event => {
-            if (jobs.some(j => j.status !== 'done')) { event.preventDefault(); event.returnValue = ''; }
+            if (jobs.some(j => j.status !== 'done' && (j.status !== 'failed' || !j.persisted))) { event.preventDefault(); event.returnValue = ''; }
         });
         render();
         if (settings.disconnectPending && backendUrl()) {
@@ -817,7 +831,7 @@
             })();
         } else if (settings.autoUpload) message('自动上传已开启，请先连接 Google Drive。', true);
     }
-    window.AudioRecorderDrive = Object.freeze({ setRecording, uploadRecording, clearLibraryQueue,
+    window.AudioRecorderDrive = Object.freeze({ setRecording, uploadRecording, reconcileRecording, clearLibraryQueue,
         isBusy: () => Boolean(pumping) || jobs.some(j => j.status === 'queued' || j.status === 'uploading') });
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
     else init();

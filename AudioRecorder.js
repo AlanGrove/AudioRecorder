@@ -15,6 +15,7 @@ let activeAudioStream = null;
 let activeAudioContext = null;
 let waveformAnimationId = null;
 let isFinalizingRecording = false;
+let activeRecoverySession = null;
 const AUTO_DOWNLOAD_STORAGE_KEY = 'audioRecorderAutoDownload';
 function isAutoDownloadEnabled() {
     return localStorage.getItem(AUTO_DOWNLOAD_STORAGE_KEY) !== 'false';
@@ -636,7 +637,9 @@ function encodeMp3Samples(floatSamples) {
 
     const mp3Buffer = mp3encoder.encodeBuffer(samples);
     if (mp3Buffer.length > 0) {
-        mp3Data.push(new Int8Array(mp3Buffer));
+        const chunk = new Int8Array(mp3Buffer);
+        mp3Data.push(chunk);
+        activeRecoverySession?.addMp3(chunk);
     }
 }
 
@@ -809,6 +812,8 @@ document.getElementById('toggle').addEventListener('click', async () => {
         }))
             .then(async stream => {
                 activeAudioStream = stream;
+                const recordingId = crypto.randomUUID();
+                const recordingCreatedAt = Date.now();
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 activeAudioContext = audioContext;
                 const source = audioContext.createMediaStreamSource(stream);
@@ -828,6 +833,10 @@ document.getElementById('toggle').addEventListener('click', async () => {
                 // 获取选择的比特率
                 const selectedBitrate = parseInt(document.getElementById('bitrate').value);
                 mp3encoder = new lamejs.Mp3Encoder(1, audioContext.sampleRate, selectedBitrate);
+                const recoverySession = await window.AudioRecorderLibrary?.beginRecording({ id: recordingId,
+                    createdAt: recordingCreatedAt, mp3Name: generateAudioRecorderFilename('mp3'), webmName: generateAudioRecorderFilename('webm'),
+                    sampleRate: audioContext.sampleRate, bitrate: selectedBitrate });
+                activeRecoverySession = recoverySession || null;
                 const mp3Processor = await createMp3InputProcessor(audioContext, source);
 
                 mediaRecorder = new MediaRecorder(stream, {
@@ -837,6 +846,7 @@ document.getElementById('toggle').addEventListener('click', async () => {
                 mediaRecorder.ondataavailable = function(event) {
                     if (event.data.size > 0) {
                         recordedChunks.push(event.data);
+                        recoverySession?.addWebm(event.data);
                     }
                 };
 
@@ -876,7 +886,9 @@ document.getElementById('toggle').addEventListener('click', async () => {
                 // 下载MP3
                 const finalMp3Buffer = mp3encoder.flush();
                 if (finalMp3Buffer.length > 0) {
-                    mp3Data.push(new Int8Array(finalMp3Buffer));
+                    const chunk = new Int8Array(finalMp3Buffer);
+                    mp3Data.push(chunk);
+                    recoverySession?.addMp3(chunk);
                 }
                 document.getElementById('downloadMP3').disabled = false;
                 const downloadCurrentMP3 = () => {
@@ -886,19 +898,25 @@ document.getElementById('toggle').addEventListener('click', async () => {
                 };
                 document.getElementById('downloadMP3').onclick = downloadCurrentMP3;
                 // Capture independent blobs and filenames before the next recording can start.
-                window.AudioRecorderDrive?.setRecording({
-                    id: crypto.randomUUID(),
+                const completedRecording = {
+                    id: recordingId, createdAt: recordingCreatedAt, duration: audioContext.currentTime,
                     mp3: { blob: new Blob(mp3Data, { type: 'audio/mpeg' }), name: generateFilename('mp3') },
                     webm: { blob: audioBlob, name: generateFilename('webm') }
-                });
+                };
+                if (window.AudioRecorderLibrary) {
+                    await window.AudioRecorderLibrary.finishRecording(recoverySession, completedRecording);
+                    window.AudioRecorderDrive?.setRecording(completedRecording, { save: false });
+                } else window.AudioRecorderDrive?.setRecording(completedRecording);
                 if (isAutoDownloadEnabled()) {
                     downloadCurrentMP3();
                 }
                     } catch (error) {
+                        await window.AudioRecorderLibrary?.abandonRecording(recoverySession);
                         stopActiveAudioResources();
                         console.error('录音处理失败:', error);
                         alert('录音处理失败，请保留当前页面并尝试下载录音。');
                     } finally {
+                        if (activeRecoverySession === recoverySession) activeRecoverySession = null;
                         window.AudioRecorderInputs?.setLocked(false);
                         isFinalizingRecording = false;
                         button.disabled = false;
@@ -906,7 +924,7 @@ document.getElementById('toggle').addEventListener('click', async () => {
                     }
                 };
 
-                mediaRecorder.start();
+                mediaRecorder.start(2000);
                 button.disabled = false;
                 startTimer();
                 button.classList.add('recording');
@@ -915,7 +933,9 @@ document.getElementById('toggle').addEventListener('click', async () => {
                 window.addEventListener('beforeunload', beforeUnloadListener); // 添加beforeunload事件监听器
                 document.title = '🔴⏰正在录音中...';  // 更新网页标题为录音中
             })
-            .catch(error => {
+            .catch(async error => {
+                await window.AudioRecorderLibrary?.abandonRecording(activeRecoverySession);
+                activeRecoverySession = null;
                 button.disabled = false;
                 stopActiveAudioResources();
                 console.error("无法访问媒体设备:", error);
