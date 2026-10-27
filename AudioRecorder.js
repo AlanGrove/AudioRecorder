@@ -804,7 +804,9 @@ document.getElementById('toggle').addEventListener('click', async () => {
 
         window.AudioRecorderDrive?.setRecording(null);
         button.disabled = true;
-        (window.AudioRecorderInputs?.getStream() || navigator.mediaDevices.getUserMedia({ audio: true }))
+        (window.AudioRecorderInputs?.getStream() || navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+        }))
             .then(async stream => {
                 activeAudioStream = stream;
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();

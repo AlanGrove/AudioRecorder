@@ -211,3 +211,9 @@ Cloudflare 出站请求使用 `redirect: "manual"` 并拒绝意外 3xx，不使�
 设备逻辑测试：`node --test scripts/test-input-devices.cjs`。手工检查：切换设备、刷新恢复、录音时设备锁定、停止解锁和 USB 麦克风拔插；标题自动上传与设置双向同步。未修改版本号，未打包 ZIP。图标来源：[Google Workspace 官方资源](https://knowledge.workspace.google.com/static/images/icons/product/drive.svg)，本地保存后随页面提供，不在每次打开时请求 Google 图标站点。
 
 时间码字体调整（未发版）：改为 Arial Black 优先的粗体无衬线数字，取消斜线零，保留绿色和桌面 46px / 窄窗口 38px 字号。时间码点击复制及样式复制功能保持原逻辑。版本仍为 1.23，未打包。
+
+### Chrome 音频处理兼容修正（未发版调整）
+
+输入采集显式请求 `echoCancellation: false`、`noiseSuppression: false` 和 `autoGainControl: false`，默认输入和指定设备均适用，减少对 ChromeWideEchoCancellation / WebRtcAllowInputVolumeAdjustment 等实验开关的依赖。取得音轨后检查实际设置；如果浏览器仍报告处理开启，会提示短录音复核。此设置只控制浏览器可配置的音频处理，不保证关闭设备驱动或系统自身的音频增强，也不能修复没有输入信号的虚拟声卡路由。
+
+验证：55 项测试通过，覆盖采集约束、实际设置不匹配提示、设备选择和已有录音/上传功能。真实麦克风或虚拟声卡的出声效果仍需用户短录音验证；若录电脑声音，应选择实际承载声音的 Voicemeeter / CABLE 等输入，并核对该输入的电平。未新增标签页/屏幕音频采集能力或插件权限。版本保持 1.23，未打包 ZIP。

@@ -40,7 +40,15 @@
                 if (!mediaDevices?.getUserMedia) throw new Error('此浏览器不支持录音，请使用 HTTPS 地址和新版 Chrome。');
                 setLocked(true);
                 try {
-                    const stream = await mediaDevices.getUserMedia({ audio: preferred ? { deviceId: { exact: preferred } } : true });
+                    // This is a recorder, not a voice call. Preserve loopback/music input
+                    // without relying on experimental Chrome-wide command-line flags.
+                    const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+                    if (preferred) audio.deviceId = { exact: preferred };
+                    const stream = await mediaDevices.getUserMedia({ audio });
+                    const settings = stream.getAudioTracks?.()[0]?.getSettings?.() || {};
+                    const processing = ['echoCancellation', 'noiseSuppression', 'autoGainControl'];
+                    notify(processing.some(key => settings[key] === true || typeof settings[key] === 'string') ?
+                        '浏览器报告仍有音频处理开启，电脑声音可能受影响。请尝试其他输入设备并短录音检查。' : '');
                     void refresh(); // Permission now exposes device labels; keep the chosen input locked.
                     return stream;
                 } catch (error) {

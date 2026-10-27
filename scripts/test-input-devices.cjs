@@ -5,10 +5,10 @@ function harness(saved = '') {
     const prefs = new Map([['audioRecorderInputDevice', saved]]), notices = [], calls = [];
     const select = { value: '', disabled: false, children: [], addEventListener(_name, fn) { this.change = fn; },
         replaceChildren(...nodes) { this.children = nodes; }, appendChild(node) { this.children.push(node); } };
-    const state = { devices: [], error: null, enumeration: null };
+    const state = { devices: [], error: null, enumeration: null, settings: {} };
     const mediaDevices = {
         enumerateDevices: async () => state.enumeration || state.devices,
-        getUserMedia: async constraints => { calls.push(constraints); if (state.error) throw state.error; return { fixture: true }; },
+        getUserMedia: async constraints => { calls.push(constraints); if (state.error) throw state.error; return { fixture: true, getAudioTracks: () => [{ getSettings: () => state.settings }] }; },
         addEventListener(_name, fn) { this.devicechange = fn; }
     };
     const controller = createController({ mediaDevices, select, storage: { getItem: key => prefs.get(key), setItem: (key, value) => prefs.set(key, value) },
@@ -21,14 +21,22 @@ test('刷新输入列表不请求麦克风，过滤输出设备和重复默认�
     await h.controller.refresh();
     assert.deepEqual(h.select.children.map(n => n.value), ['', 'usb']); assert.equal(h.calls.length, 0);
 });
-test('设备选择持久保存，录音使用 exact deviceId，默认使用 audio true', async () => {
+test('设备选择持久保存，录音使用 exact deviceId，默认和指定输入都显式关闭语音处理', async () => {
     const h = harness(); h.state.devices = [input('usb', 'USB')]; await h.controller.refresh();
     h.select.value = 'usb'; h.select.change();
     assert.equal(h.prefs.get('audioRecorderInputDevice'), 'usb');
-    await h.controller.getStream(); assert.deepEqual(h.calls[0], { audio: { deviceId: { exact: 'usb' } } });
+    const raw = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+    await h.controller.getStream(); assert.deepEqual(h.calls[0], { audio: { ...raw, deviceId: { exact: 'usb' } } });
     assert.equal(h.select.disabled, true);
     h.controller.setLocked(false); h.select.value = ''; h.select.change();
-    await h.controller.getStream(); assert.deepEqual(h.calls[1], { audio: true });
+    await h.controller.getStream(); assert.deepEqual(h.calls[1], { audio: raw });
+});
+
+test('浏览器仍启用音频处理时给出提示，不把成功取得流误报为已恢复声音', async () => {
+    const h = harness(); h.state.settings = { echoCancellation: 'all', autoGainControl: true };
+    await h.controller.getStream(); assert.match(h.notices.at(-1), /仍有音频处理/);
+    h.state.settings = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+    h.controller.setLocked(false); await h.controller.getStream(); assert.equal(h.notices.at(-1), '');
 });
 test('未授权时不丢弃以前的选择，授权后显示设备名称', async () => {
     const h = harness('usb'); await h.controller.refresh(); assert.equal(h.select.value, 'usb');
