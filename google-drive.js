@@ -34,6 +34,7 @@
     let restoring = null;
     let lastUploadUrl = '';
     const jobs = [];
+    const recordingSaves = new Map();
     const folderCache = new Map();
     const element = id => document.getElementById(id);
     const connected = () => Boolean(token && account && Date.now() < tokenExpires);
@@ -186,7 +187,7 @@
         element('driveRetry').disabled = !connected() || Boolean(pumping) || !jobs.some(j => j.status === 'failed');
         element('driveRetry').hidden = !jobs.some(j => j.status === 'failed');
         const pending = jobs.filter(j => j.status !== 'done').length;
-        element('driveQueue').textContent = pending ? pending + ' 个文件待上传。关闭或刷新页面会丢失待传文件，请先下载备份。' : '没有待上传文件。';
+        element('driveQueue').textContent = pending ? pending + ' 个文件待上传。已保存的录音可在“打开列表”中重新上传。' : '没有待上传文件。';
         element('driveQueue').hidden = !pending;
         element('driveAccount').textContent = connected() ?
             '已连接：' + (account.displayName || 'Google Drive') : '尚未连接 Google Drive';
@@ -408,7 +409,7 @@
         }
         disconnecting = false;
         render();
-        message('已断开连接并关闭自动上传。待传文件仅保留在当前页面。');
+        message('已断开连接并关闭自动上传。本地录音列表保留。');
     }
     function quote(value) { return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
     async function getFolder(name) {
@@ -462,6 +463,7 @@
             const ids = await (await request(API + '/drive/v3/files/generateIds?count=1&space=drive&type=files')).json();
             job.fileId = ids.ids?.[0];
             if (!job.fileId) throw new Error('无法创建云端文件标识，请重试。');
+            await window.AudioRecorderLibrary?.checkpoint(job.recordingId, job.format, job.fileId, job.owner);
         }
         if (job.session) {
             const status = await request(job.session, { method: 'PUT', headers: {
@@ -560,6 +562,7 @@
             const job = jobs.find(j => j.status === 'queued');
             if (!job) break;
             job.status = 'uploading';
+            window.AudioRecorderLibrary?.setUploadState(job.recordingId, 'uploading');
             activeController = new AbortController();
             render();
             try {
@@ -567,6 +570,7 @@
                 if (!result?.id || result.id !== job.fileId) throw new Error('云端文件标识校验失败，请重试。');
                 job.status = 'done';
                 job.result = result;
+                await window.AudioRecorderLibrary?.uploaded(job.recordingId, job.format, result, job.owner);
                 job.blob = null;
                 job.session = null;
                 showResult(job, result);
@@ -575,7 +579,7 @@
                 job.status = 'failed';
                 message(error.name === 'AbortError' ? '上传已暂停，文件保留在当前页面。' :
                     error.message || '网络连接失败，请重试上传。', true);
-            } finally { activeController = null; render(); }
+            } finally { activeController = null; window.AudioRecorderLibrary?.setUploadState(job.recordingId, null); render(); }
         }
     }
     function pump() {
@@ -586,33 +590,73 @@
         return pumping;
     }
     async function queueCurrent() {
-        if (restoring) await restoring;
-        if (!currentRecording) { message('请先完成一段录音。', true); return Promise.resolve(); }
+        return queueRecording(currentRecording);
+    }
+    async function queueRecording(recording) {
         const format = settings.format;
-        const key = currentRecording.id + ':' + format;
+        if (window.AudioRecorderLibrary?.isClearing()) { message('正在清空本地列表，请稍后再上传。', true); return false; }
+        if (recordingSaves.has(recording?.id)) await recordingSaves.get(recording.id);
+        if (restoring) await restoring;
+        if (!recording) { message('请先完成一段录音。', true); return false; }
+        const key = recording.id + ':' + format;
         let job = jobs.find(j => j.key === key);
+        const uploaded = recording.uploads?.[format];
+        if (!job && uploaded?.id) {
+            showResult({ name: recording[format].name }, uploaded);
+            message('这段录音已上传，不会重复创建。');
+            return true;
+        }
         if (job?.status === 'done') {
             showResult(job, job.result);
             message('这段录音已上传，不会重复创建。');
-            return Promise.resolve();
+            return true;
         }
         if (!job) {
-            const file = currentRecording[format];
-            if (!file?.blob?.size) { message('当前录音没有可上传的音频数据。', true); return Promise.resolve(); }
+            const file = recording[format];
+            if (!file?.blob?.size) { message('当前录音没有可上传的音频数据。', true); return false; }
+            const checkpoint = recording.pending?.[format];
             job = { key, blob: file.blob, name: file.name, folderName: settings.folderName,
-                status: 'queued', offset: 0, fileId: null, session: null, owner: null };
+                recordingId: recording.id, format,
+                status: 'queued', offset: 0, fileId: checkpoint?.fileId || null, session: null, owner: checkpoint?.owner || null };
             jobs.push(job);
         } else if (job.status === 'failed') job.status = 'queued';
-        return pump();
+        window.AudioRecorderLibrary?.setUploadState(recording.id, 'queued');
+        await pump();
+        return job.status === 'done';
     }
     function setRecording(recording) {
         currentRecording = recording;
+        if (recording && window.AudioRecorderLibrary) {
+            const saving = window.AudioRecorderLibrary.save(recording);
+            recordingSaves.set(recording.id, saving);
+            void saving.finally(() => recordingSaves.delete(recording.id));
+        }
         // Completed jobs no longer need their deduplication record after moving to a new take.
         for (let i = jobs.length - 1; i >= 0; i--) {
             if (jobs[i].status === 'done' && jobs[i].key.split(':')[0] !== recording?.id) jobs.splice(i, 1);
         }
         render();
         if (recording && settings.autoUpload) void queueCurrent();
+    }
+    async function uploadRecording(recording) {
+        if (restoring) await restoring;
+        if (!connected()) {
+            element('recordingLibrary')?.close();
+            if (!element('driveSettings').open) element('driveSettings').showModal();
+            message('请先连接 Google Drive，再返回录音列表点击上传。', true);
+            return false;
+        }
+        return queueRecording(recording);
+    }
+    function clearLibraryQueue() {
+        if (jobs.some(j => j.status === 'queued' || j.status === 'uploading')) return;
+        jobs.length = 0;
+        currentRecording = null;
+        lastUploadUrl = '';
+        element('driveMainResult').hidden = true;
+        element('driveResult').hidden = true;
+        message('本地录音列表已清空。');
+        render();
     }
     function init() {
         const dialog = element('driveSettings');
@@ -753,7 +797,8 @@
             })();
         } else if (settings.autoUpload) message('自动上传已开启，请先连接 Google Drive。', true);
     }
-    window.AudioRecorderDrive = Object.freeze({ setRecording });
+    window.AudioRecorderDrive = Object.freeze({ setRecording, uploadRecording, clearLibraryQueue,
+        isBusy: () => Boolean(pumping) || jobs.some(j => j.status === 'queued' || j.status === 'uploading') });
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
     else init();
 })();

@@ -122,7 +122,7 @@ function harness(options = {}) {
     const stored = options.stored || new Map([[KEY, JSON.stringify({ clientId: 'test.apps.googleusercontent.com', ...options.settings })]]);
     const calls = [];
     const sessions = new Map();
-    const completed = new Map();
+    const completed = options.completed || new Map();
     const copied = [];
     let legacyInput = null;
     let idCount = 0;
@@ -251,6 +251,7 @@ function harness(options = {}) {
         } } },
         location: { protocol: options.extension ? 'chrome-extension:' : 'https:' },
         AudioRecorderDriveBackendUrl: options.backend ? 'https://recorder.example' : '',
+        AudioRecorderLibrary: options.library,
         open: () => options.popupBlocked ? null : { location: {}, closed: false, close() { this.closed = true; } },
         localStorage: { getItem: key => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
         URL, URLSearchParams, Blob, AbortController, fetch, console, Date,
@@ -481,4 +482,47 @@ test('下一段上传成功后两处链接同步更新，导入后隐藏首次�
     assert.equal(h.el('driveLastUploadUrl').textContent, 'https://drive.google.com/file/d/file-2/view');
     assert.equal(h.el('driveMainUploadUrl').textContent, h.el('driveLastUploadUrl').textContent);
     assert.equal(h.el('driveCopyStatus').textContent, '');
+});
+
+function localLibrary() {
+    const saved = new Map(), events = [];
+    return { saved, events,
+        save: async r => { saved.set(r.id, { ...r, uploads: {}, pending: {} }); return true; },
+        checkpoint: async (id, format, fileId, owner) => { events.push('checkpoint'); if(saved.has(id)) saved.get(id).pending[format] = { fileId, owner }; },
+        uploaded: async (id, format, result, owner) => { events.push('uploaded'); if(saved.has(id)) { saved.get(id).uploads[format] = { id: result.id, owner }; delete saved.get(id).pending[format]; } },
+        setUploadState() {}, isClearing: () => false
+    };
+}
+test('从列表上传旧录音不替换主页面当前录音，完成后保存分享链接', async () => {
+    const library=localLibrary(), h=harness({library}); await h.connect();
+    const old=h.recording('older'), current=h.recording('current');
+    h.drive.setRecording(old); h.drive.setRecording(current);
+    assert.equal(await h.drive.uploadRecording(library.saved.get('older')),true);
+    await h.fire('driveUploadCurrent');
+    await h.until(() => h.completed.size === 2);
+    assert.deepEqual(h.uploads().map(c=>JSON.parse(c.body).name),['older.mp3','current.mp3']);
+    assert.ok(library.saved.get('older').uploads.mp3.id);
+    assert.ok(library.events.indexOf('checkpoint')<library.events.indexOf('uploaded'));
+});
+test('上传完成响应丢失后重开，通过已保存文件 ID 核对，不创建重复文件', async () => {
+    const library=localLibrary(), h=harness({library}); await h.connect();
+    h.state.lostFinal=true; h.drive.setRecording(h.recording('persistent'));
+    assert.equal(await h.drive.uploadRecording(library.saved.get('persistent')),false);
+    assert.equal(h.completed.size,1); assert.ok(library.saved.get('persistent').pending.mp3.fileId);
+    const reopened=harness({library,completed:h.completed}); await reopened.connect();
+    assert.equal(await reopened.drive.uploadRecording(library.saved.get('persistent')),true);
+    assert.equal(reopened.uploads().length,0); assert.ok(library.saved.get('persistent').uploads.mp3.id);
+    assert.equal(await reopened.drive.uploadRecording(library.saved.get('persistent')),true);
+    assert.equal(reopened.uploads().length,0);
+});
+test('未连接时列表上传引导连接，不提交音频；清空后不能重试旧队列', async () => {
+    const h=harness();
+    assert.equal(await h.drive.uploadRecording(h.recording()),false);
+    assert.equal(h.el('driveSettings').open,true); assert.equal(h.uploads().length,0);
+    await h.connect(); h.drive.setRecording(h.recording()); h.state.failChunk=1;
+    await h.fire('driveUploadCurrent');
+    await h.until(() => !h.drive.isBusy());
+    h.drive.clearLibraryQueue();
+    assert.equal(h.el('driveRetry').hidden,true); assert.equal(h.el('driveUploadCurrent').disabled,true);
+    assert.equal(h.drive.isBusy(),false);
 });

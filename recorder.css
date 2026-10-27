@@ -14,13 +14,12 @@ body {
 .background-box .recorder-title-row h1 { color: #20ad66; font-size: 14px; font-weight: 600; white-space: nowrap; }
 .background-box .recorder-version { color: #7a8591; font-size: 11px; font-weight: 400; margin-left: 4px; }
 .recorder-header-tools { display: flex; align-items: center; gap: 7px; }
-.recorder-header-tools #driveSettingsButton, .recorder-header-tools #windowSizeToggle {
+.recorder-header-tools #driveSettingsButton {
     box-sizing: border-box; position: relative; top: auto; right: auto; width: 28px;
     height: 28px; min-width: 28px; padding: 6px; border: 0; border-radius: 9px;
     color: #7a8591; background: #f6f8fa; box-shadow: none;
 }
 .recorder-header-tools #driveSettingsButton svg { width: 16px; height: 16px; }
-.recorder-header-tools #windowSizeToggle .window-size-icon { border-color: #7a8591; width: 12px; height: 12px; }
 .background-box .timer-row {
     width: 100%; margin: 0 0 16px; padding: 8px 0; gap: 18px;
     justify-content: center; align-items: center;
@@ -77,14 +76,9 @@ body {
 .background-box .controls button svg { width: 14px; height: 14px; flex: 0 0 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .background-box #downloadWEBM { color: #20ad66; background: #edf9f2; }
 .background-box #downloadMP3 { color: #b77a13; background: #fff7e9; }
-.background-box #cloudLinksButton { color: #2384dc; background: #eff6ff; }
+.background-box #recordingListButton { color: #2384dc; background: #eff6ff; }
 .background-box .controls button:hover { transform: translateY(-1px); filter: brightness(.98); }
 .background-box .controls button:disabled { cursor: default; opacity: .5; transform: none; }
-.background-box #linkInput {
-    display: block; box-sizing: border-box; width: 100%; min-height: 32px; height: 32px; max-height: 100px;
-    margin: 10px 0 0; padding: 6px 9px; border: 1px solid #e8edf1; border-radius: 7px;
-    color: #7a8591; background: #fff; font: inherit; font-size: 11px; line-height: 1.5; resize: vertical;
-}
 .background-box #driveSummary { max-width: 100%; margin: 9px 0; text-align: left; }
 .background-box #driveMainResult { width: 100%; margin: 12px 0 0; border-radius: 9px; background: #eff6ff; border-color: #e6f0fc; }
 .background-box #driveMainResult .drive-file-name { font-size: 11px; font-weight: 400; }

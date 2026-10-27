@@ -55,7 +55,7 @@ button {
         #downloadWEBM {background-color: #1CAF50;}
         #downloadMP3 {background-color: #FFAE00;}
         
-        #cloudLinksButton{background-color: #2196F3;}
+        #recordingListButton{background-color: #2196F3;}
         
         #copy-plain,
         #copy-color,
@@ -65,7 +65,7 @@ button {
         
         #downloadWEBM:hover,
         #downloadMP3:hover,
-        #cloudLinksButton:hover{transform: scale(1.2);}
+        #recordingListButton:hover{transform: scale(1.2);}
         
         #copy-plain:hover,
         #copy-color:hover,
@@ -451,10 +451,6 @@ button {
             cursor: pointer;
         }
 
-        #linkInput {
-            white-space: nowrap;
-            overflow: hidden;
-        }
 #popup1 {
         
         }
@@ -821,6 +817,7 @@ button {
   <link rel="stylesheet" href="shared/module-switcher.css">
   <link rel="stylesheet" href="google-drive.css">
   <link rel="stylesheet" href="recorder.css">
+  <link rel="stylesheet" href="recording-library.css">
 </head>
 <body>
 <dialog id="driveSettings" aria-labelledby="driveSettingsTitle">
@@ -901,6 +898,16 @@ button {
         <p class="drive-muted">配置文件只在本机读取，仅保存客户端 ID。保持连接服务需另外配置服务端 OAuth 客户端；断开连接会退出此浏览器会话。</p>
     </details>
 </dialog>
+<dialog id="recordingLibrary" aria-labelledby="libraryTitle">
+    <div class="library-header"><div><h2 id="libraryTitle">录音列表</h2><p id="libraryCount">保存在此浏览器</p></div><button id="libraryClose" type="button" aria-label="关闭录音列表">×</button></div>
+    <p class="library-note">录音保存在当前浏览器，可播放、下载或上传。分享链接点击即复制，访问权限由 Google Drive 控制。</p>
+    <div id="libraryRows"></div>
+    <p id="libraryStatus" role="status" aria-live="polite"></p>
+    <input id="libraryCopyFallback" type="text" aria-label="可手动复制的分享链接" readonly hidden>
+    <audio id="libraryPlayer" controls hidden></audio>
+    <div class="library-footer"><button id="libraryClear" type="button">清空列表</button><span>仅清除浏览器副本，保留云端文件</span></div>
+    <div id="libraryClearConfirm" class="library-clear-confirm" hidden><p>确定清空所有本地录音？未下载或上传的文件将无法找回。</p><button id="libraryClearCancel" type="button">取消</button><button id="libraryClearConfirmButton" type="button">确认清空</button></div>
+</dialog>
 <div class="background-box">     
     <div class="recorder-title-row">
         <h1>音频录制器 <span class="recorder-version">1.23</span></h1>
@@ -913,7 +920,6 @@ button {
             </svg>
             <span class="drive-cloud-slash" aria-hidden="true"></span>
         </button>
-        <button id="windowSizeToggle" class="window-size-toggle" type="button" aria-label="切换窗口大小" data-tooltip="切换窗口大小"><span class="window-size-icon" aria-hidden="true"></span></button>
         <button id="driveSettingsButton" type="button" aria-label="设置" title="设置" aria-haspopup="dialog" aria-controls="driveSettings">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m9.4 3-.6 2.2-2 .9-2-.8L2.7 9l1.7 1.5v2.3L2.7 14l2.1 3.7 2-.7 2 .9.6 2.1h4.2l.6-2.1 2-.9 2 .7 2.1-3.7-1.7-1.3v-2.3L20.3 9l-2.1-3.7-2 .8-2-.9-.6-2.2z"/><circle cx="11.5" cy="11.5" r="3.2"/></svg>
         </button>
@@ -1014,16 +1020,11 @@ button {
     <div class="controls">
         <button id="downloadWEBM" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m-3-3 3 3 3-3M4 13v3h12v-3"/></svg><span>下载 WEBM</span></button>
         <button id="downloadMP3" type="button" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m-3-3 3 3 3-3M4 13v3h12v-3"/></svg><span>下载 MP3</span></button>
-        <button id="cloudLinksButton" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8 7 2-2a3.5 3.5 0 0 1 5 5l-2 2m-1 1-2 2a3.5 3.5 0 0 1-5-5l2-2m0 5 6-6"/></svg><span>打开链接</span></button>
+        <button id="recordingListButton" type="button" aria-haspopup="dialog" aria-controls="recordingLibrary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 5h10M7 10h10M7 15h10M3 5h.1M3 10h.1M3 15h.1"/></svg><span>打开列表</span></button>
 
     </div>
-    <div>
-        <textarea id="linkInput" placeholder="输入链接，每行一个，格式为 '备注 @ 链接'...
-        备注1 @ https:
-        备注2 @ https:
-	"></textarea>
-    </div>
 
+    <p id="libraryNotice" role="status" aria-live="polite" hidden></p>
     <p id="driveSummary" role="status" aria-live="polite"></p>
     <section id="driveMainResult" aria-label="最近上传的录音" hidden>
         <button id="driveMainCopy" class="drive-copy-link" type="button" aria-label="复制云端链接">
@@ -1037,6 +1038,7 @@ button {
     <audio id="audioPlayback" controls></audio>
 </div>
 <script src="drive-backend-config.js"></script>
+<script src="recording-library.js"></script>
 <script src="google-drive.js"></script>
 <script src="AudioRecorder.js"></script>
     <script src="lamejs.iife.js"></script>

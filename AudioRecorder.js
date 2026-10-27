@@ -16,36 +16,6 @@ let activeAudioContext = null;
 let waveformAnimationId = null;
 let isFinalizingRecording = false;
 const AUTO_DOWNLOAD_STORAGE_KEY = 'audioRecorderAutoDownload';
-const RECORDER_WINDOW_SIZES = {
-    compact: { width: 440, height: 330 },
-    expanded: { width: 440, height: 700 }
-};
-let isRecorderWindowExpanded = window.outerHeight > 460;
-
-function applyRecorderWindowSize(size) {
-    if (typeof chrome !== 'undefined' && chrome.windows?.getCurrent && chrome.windows?.update) {
-        chrome.windows.getCurrent(currentWindow => {
-            if (chrome.runtime?.lastError || !currentWindow?.id) {
-                window.resizeTo(size.width, size.height);
-                return;
-            }
-            chrome.windows.update(currentWindow.id, size);
-        });
-        return;
-    }
-    window.resizeTo(size.width, size.height);
-}
-
-function initWindowSizeToggle() {
-    const toggle = document.getElementById('windowSizeToggle');
-    if (!toggle) return;
-    toggle.addEventListener('click', () => {
-        isRecorderWindowExpanded = !isRecorderWindowExpanded;
-        applyRecorderWindowSize(isRecorderWindowExpanded ? RECORDER_WINDOW_SIZES.expanded : RECORDER_WINDOW_SIZES.compact);
-    });
-}
-
-
 function isAutoDownloadEnabled() {
     return localStorage.getItem(AUTO_DOWNLOAD_STORAGE_KEY) !== 'false';
 }
@@ -60,78 +30,12 @@ function initAutoDownloadToggle() {
 }
 
 document.addEventListener('DOMContentLoaded', initAutoDownloadToggle);
-document.addEventListener('DOMContentLoaded', initWindowSizeToggle);
+
 // 保存用户选择并设置为默认选项
 function setCopyPreference(preference) {
     copyPreference = preference;
     document.getElementById('popup1').style.display = 'none';
 }
-
-// 读取links.txt文件内容
-fetch('links.txt')
-    .then(response => response.text())
-    .then(text => {
-        const cloudLinks = text.split('\n').filter(link => link.trim() !== '');
-        
-        document.getElementById('cloudLinksButton').addEventListener('click', () => {
-            if (cloudLinks.length > 0) {
-                cloudLinks.forEach(link => {
-                    window.open(link.trim(), '_blank');
-                });
-            } else {
-                //暂时取消这里的提示代码：alert("没有可用的云端链接。");
-            }
-        });
-    })
-    .catch(error => {
-        console.error('无法读取云端链接文件:', error);
-    });
-
-
-// 点击“打开链接”按钮时保存路径和备注并打开
-document.getElementById('cloudLinksButton').addEventListener('click', function() {
-    var inputText = document.getElementById('linkInput').value;
-    var lines = inputText.split('\n');
-    var paths = [];
-    var notes = [];
-
-    if (lines.length > 0) {
-        lines.forEach(function(line) {
-            var parts = line.split('@');
-            var note = parts[0].trim();
-            var path = parts[1] ? parts[1].trim() : '';
-
-            if (path) {
-                paths.push(path);
-                notes.push(note);
-            }
-        });
-
-        // 保存路径和备注到 localStorage
-        localStorage.setItem('savedLinks', inputText);
-
-        // 打开每个路径
-        paths.forEach(function(path) {
-            if (path) {
-                // 检测是否是有效的路径
-                try {
-                    // 尝试打开本地路径或 URL
-                    var url = new URL(path, window.location.href);
-                    window.open(url, '_blank');
-                } catch (e) {
-                    // 如果不是有效的 URL，尝试打开本地文件
-                    alert('无法打开路径: ' + path);
-                }
-            }
-        });
-    } else {
-        alert('请输入至少一个有效的路径');
-    }
-});
-
-        // 页面加载时自动填充保存的路径和备注
-        var savedLinks = localStorage.getItem('savedLinks');
-        if (savedLinks) {document.getElementById('linkInput').value = savedLinks;}
 
         // 获取日期选择器元素
         const startDateInput = document.getElementById('startDate');
