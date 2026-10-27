@@ -2,6 +2,8 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self' https:; media-src 'self' blob:; worker-src 'self'; frame-src https://accounts.google.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🟢准备录音</title>
     <link rel="icon" type="image/png" href="icons/icon16.png">
@@ -1045,7 +1047,7 @@ button {
 <script src="drive-backend-config.js"></script>
 <script src="recording-recovery.js?recovery=checkpoint"></script>
 <script src="recording-library.js?recovery=checkpoint"></script>
-<script src="google-drive.js?recovery=checkpoint"></script>
+<script src="google-drive.js?security=session-csp"></script>
 <script src="input-devices.js?audio=raw-input"></script>
 <script src="AudioRecorder.js?recovery=checkpoint"></script>
     <script src="lamejs.iife.js"></script>

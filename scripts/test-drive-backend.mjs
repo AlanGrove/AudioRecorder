@@ -17,6 +17,7 @@ function harness() {
                 const storage = { get: async key => structuredClone(values.get(key)),
                     put: async (key, value) => values.set(key, structuredClone(value)),
                     deleteAll: async () => values.clear(), setAlarm: async () => {} };
+                storage.transaction = action => action(storage);
                 objects.set(id, { values, object: new DriveSession({ storage }, env) });
             }
             return objects.get(id).object;
@@ -216,6 +217,28 @@ test('Cloudflare OAuth 后端', async t => {
             [...h.objects.values()][0].values.get('session').expires = 0;
             assert.equal((await h.request('/auth/token', 'POST')).status, 401);
             assert.equal([...h.objects.values()][0].values.size, 0);
+        });
+        for (const operation of ['callback', 'refresh']) await t.test(`${operation} 加密期间退出，迟到的凭据不能重建已删除会话`, async () => {
+            const h = harness(); globalThis.fetch = h.fetchGoogle;
+            if (operation === 'refresh') await h.authorize();
+            const flow = operation === 'callback' ? (await h.start()).data.flow : null;
+            const originalEncrypt = crypto.subtle.encrypt;
+            let release, entered;
+            const gate = new Promise(resolve => { release = resolve; });
+            const waiting = new Promise(resolve => { entered = resolve; });
+            crypto.subtle.encrypt = async function(...args) {
+                const result = await originalEncrypt.apply(this, args);
+                entered(); await gate; return result;
+            };
+            try {
+                const pending = operation === 'callback' ? h.callback(flow) : h.request('/auth/token', 'POST');
+                await waiting;
+                assert.equal((await h.request('/auth/logout', 'POST')).status, 200);
+                release();
+                assert.ok([401,409].includes((await pending).status), 'Late credential commit must be rejected');
+                assert.equal([...h.objects.values()][0].values.size, 0);
+                assert.equal((await h.request('/auth/session')).status, 401);
+            } finally { release(); crypto.subtle.encrypt = originalEncrypt; }
         });
     } finally { globalThis.fetch = originalFetch; }
 });

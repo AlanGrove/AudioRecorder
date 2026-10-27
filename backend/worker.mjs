@@ -36,7 +36,7 @@ async function googleToken(env, params) {
     const response = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID,
-            client_secret: env.GOOGLE_CLIENT_SECRET, ...params }), redirect: 'manual'
+            client_secret: env.GOOGLE_CLIENT_SECRET, ...params }), redirect: 'manual', signal: AbortSignal.timeout(15000)
     });
     if (response.status >= 300 && response.status < 400) {
         const error = new Error('google_unavailable'); error.status = 502; throw error;
@@ -127,6 +127,17 @@ export default {
 
 export class DriveSession {
     constructor(ctx, env) { this.ctx = ctx; this.env = env; this.refreshing = null; }
+    // Encrypt/network operations yield to logout or a newer login. Commit only to
+    // the same still-live session inside one storage transaction.
+    async updateSession(version, change, accepts = () => true) {
+        return this.ctx.storage.transaction(async tx => {
+            const current = await tx.get('session');
+            if (!current || current.expires <= Date.now() || current.version !== version || !accepts(current)) return null;
+            change(current);
+            await tx.put('session', current);
+            return current;
+        });
+    }
     async read() {
         const session = await this.ctx.storage.get('session');
         if (session && session.expires > Date.now()) return session;
@@ -174,12 +185,10 @@ export class DriveSession {
                 await this.ctx.storage.put('session', session);
                 const callbackVersion = session.version;
                 const callbackFailure = async (code, status = 400) => {
-                    const current = await this.read();
-                    if (current?.version === callbackVersion && current.processing?.state === body.state) {
+                    await this.updateSession(callbackVersion, current => {
                         current.processing = null;
                         current.error = code;
-                        await this.ctx.storage.put('session', current);
-                    }
+                    }, current => current.processing?.state === body.state);
                     return fail(code, status);
                 };
                 if (body.denied || !body.code) return callbackFailure('authorization_denied');
@@ -190,7 +199,7 @@ export class DriveSession {
                     if (!(tokens.scope || '').split(' ').includes(SCOPE) || !tokens.refresh_token) return callbackFailure('missing_offline_scope');
                     callbackStage = 'profile_read';
                     const response = await fetch('https://www.googleapis.com/drive/v3/about?fields=user(permissionId,displayName,emailAddress,photoLink)', {
-                        headers: { Authorization: 'Bearer ' + tokens.access_token }, redirect: 'manual'
+                        headers: { Authorization: 'Bearer ' + tokens.access_token }, redirect: 'manual', signal: AbortSignal.timeout(15000)
                     });
                     if (!response.ok) return callbackFailure('profile_unavailable', 502);
                     const profile = (await response.json()).user;
@@ -199,18 +208,15 @@ export class DriveSession {
                     const current = await this.read();
                     if (!current || current.version !== callbackVersion || current.pending ||
                         current.processing?.state !== body.state) return fail('session_changed', 409);
-                    session = current;
-                    session.version = random();
-                    session.activeFlow = body.state;
-                    session.profile = profile;
-                    session.reauthorize = false;
-                    session.error = '';
-                    session.processing = null;
                     callbackStage = 'encryption';
-                    session.tokens = await seal(this.env, { access: tokens.access_token, refresh: tokens.refresh_token,
+                    const encrypted = await seal(this.env, { access: tokens.access_token, refresh: tokens.refresh_token,
                         expires: Date.now() + Math.max(0, Number(tokens.expires_in || 3600) - 90) * 1000 }, session.id);
                     callbackStage = 'session_write';
-                    await this.ctx.storage.put('session', session);
+                    const committed = await this.updateSession(callbackVersion, target => {
+                        Object.assign(target, { version: random(), activeFlow: body.state, profile,
+                            reauthorize: false, error: '', processing: null, tokens: encrypted });
+                    }, target => !target.pending && target.processing?.state === body.state);
+                    if (!committed) return fail('session_changed', 409);
                     return json({ connected: true });
                 } catch (error) {
                     return callbackFailure(['reauthorize', 'google_unavailable'].includes(error.message) ? error.message : 'callback_' + callbackStage + '_failed',
@@ -240,12 +246,9 @@ export class DriveSession {
             let refreshed;
             try { refreshed = await googleToken(this.env, { grant_type: 'refresh_token', refresh_token: tokens.refresh }); }
             catch (error) {
-                const current = await this.read();
-                if (error.message === 'reauthorize' && current?.version === session.version) {
-                    current.reauthorize = true;
-                    current.tokens = null;
-                    await this.ctx.storage.put('session', current);
-                }
+                if (error.message === 'reauthorize') await this.updateSession(session.version, current => {
+                    current.reauthorize = true; current.tokens = null;
+                });
                 throw error;
             }
             const current = await this.read();
@@ -253,8 +256,10 @@ export class DriveSession {
             tokens.access = refreshed.access_token;
             tokens.refresh = refreshed.refresh_token || tokens.refresh;
             tokens.expires = Date.now() + Math.max(0, Number(refreshed.expires_in || 3600) - 90) * 1000;
-            current.tokens = await seal(this.env, tokens, current.id);
-            await this.ctx.storage.put('session', current);
+            const encrypted = await seal(this.env, tokens, current.id);
+            if (!await this.updateSession(session.version, target => { target.tokens = encrypted; })) {
+                const error = new Error('reauthorize'); error.status = 401; throw error;
+            }
         }
         const current = await this.read();
         if (!current || current.version !== session.version) {

@@ -4,10 +4,11 @@
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",
-    "test": "node --test ../scripts/test-drive-backend.mjs",
-    "test:runtime": "node ../scripts/check-drive-runtime.cjs"
+    "test": "node ../scripts/run-tests.cjs",
+    "test:runtime": "node ../scripts/run-tests.cjs --runtime"
   },
   "devDependencies": {
+    "fake-indexeddb": "6.2.4",
     "wrangler": "4.153.0"
   }
 }

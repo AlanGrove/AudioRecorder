@@ -7,6 +7,21 @@ $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $failed = $false
 
+# Prune ignored tool/output directories before descending, rather than walking
+# installed dependencies and filtering them afterwards.
+function Get-ProjectSourceFiles {
+    param([string]$Directory)
+    foreach ($item in Get-ChildItem -LiteralPath $Directory -Force) {
+        if ($item.PSIsContainer) {
+            if ($item.Name -notin @('.git', 'node_modules', 'outputs', '.wrangler') -and
+                !($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                Get-ProjectSourceFiles -Directory $item.FullName
+            }
+        } else { $item }
+    }
+}
+$projectFiles = @(Get-ProjectSourceFiles -Directory $root)
+
 function Add-Failure {
     param([string]$Message)
     Write-Host "FAIL: $Message" -ForegroundColor Red
@@ -78,23 +93,24 @@ foreach ($file in $requiredFiles) {
 $sensitiveFilePatterns = @(
     "*.pem", "*.key", "*.p12", "*.pfx", "*.crt", "*.cer",
     "*.env", ".env", ".env.*",
+    ".dev.vars", ".dev.vars.*", "*client_secret*.json",
     "*.mp3", "*.webm", "*.wav", "*.m4a", "*.ogg", "*.aac"
 )
 
 foreach ($pattern in $sensitiveFilePatterns) {
-    $matches = Get-ChildItem -Path $root -Recurse -Force -File -Filter $pattern |
-        Where-Object { $_.FullName -notmatch "\\.git\\" }
-    foreach ($match in $matches) {
+    $sensitiveMatches = $projectFiles | Where-Object { $_.Name -like $pattern -and $_.Name -ne '.env.example' }
+    foreach ($match in $sensitiveMatches) {
         Add-Failure "sensitive or generated file should not be committed: $($match.FullName)"
     }
 }
 
-$textFiles = Get-ChildItem -Path $root -Recurse -Force -File |
+$textFiles = $projectFiles |
     Where-Object {
         $_.FullName -notmatch "\\.git\\" -and
         $_.FullName -notmatch "\\node_modules\\" -and
+        $_.FullName -notmatch "[\\/](outputs|\.wrangler)[\\/]" -and
         $_.FullName -ne $PSCommandPath -and
-        ($_.Extension -in @(".html", ".js", ".json", ".md", ".txt", ".ps1", ".yml", ".yaml", ".css") -or $_.Name -eq "LICENSE" -or $_.Name -eq ".gitignore")
+        ($_.Extension -in @(".html", ".js", ".mjs", ".cjs", ".toml", ".json", ".md", ".txt", ".ps1", ".yml", ".yaml", ".css") -or $_.Name -in @('LICENSE', '.gitignore', '.env.example'))
     }
 
 foreach ($file in $textFiles) {
@@ -125,7 +141,13 @@ foreach ($file in $textFiles) {
 
     # OAuth response field names are source code, not embedded credentials.
     # Still reject actual quoted credential assignments and private-key material.
-    if ($content -match '(?i)(?:client_secret|refresh_token|access_token)\s*["'']?\s*[:=]\s*["''][^"'']{16,}["'']|BEGIN (RSA |EC |OPENSSH |PRIVATE )?KEY|-----BEGIN') {
+    $credentialMatches = [regex]::Matches($content, '(?i)(?:client_secret|refresh_token|access_token)\s*["'']?\s*[:=]\s*["''](?<value>[^"'']{16,})["'']')
+    $unexpectedCredentials = @($credentialMatches | Where-Object {
+        # Exact, intentionally nonfunctional constants in the existing Google test doubles.
+        !($file.Name -in @('test-drive-backend.mjs', 'check-drive-runtime.cjs') -and
+          $_.Groups['value'].Value -in @('test-only-secret', 'runtime-refreshed'))
+    })
+    if ($unexpectedCredentials.Count -gt 0 -or $content -match 'BEGIN (RSA |EC |OPENSSH |PRIVATE )?KEY|-----BEGIN') {
         Add-Failure "secret-like content found in $relative"
     }
 
@@ -162,6 +184,8 @@ if ($PackagePath) {
                 $_ -match "^\.git/" -or
                 $_ -match "^\.github/" -or
                 $_ -match "^node_modules/" -or
+                $_ -match '(^|/)(\.wrangler|outputs)/' -or
+                $_ -match '(^|/)(\.env(?:\..*)?|\.dev\.vars(?:\..*)?|[^/]*client_secret[^/]*\.json)$' -or
                 $_ -match "(^|/)(test|tests|__tests__)/" -or
                 $_ -match "\.(pem|key|p12|pfx|crt|cer|env|map)$"
             }

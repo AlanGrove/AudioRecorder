@@ -265,6 +265,7 @@
         return response;
     }
     async function loadWebSdk() {
+        if (extension) throw new Error('Chrome 插件仅使用浏览器原生授权组件。');
         if (window.google?.accounts?.oauth2) return;
         if (!sdkPromise) {
             sdkPromise = new Promise((resolve, reject) => {
