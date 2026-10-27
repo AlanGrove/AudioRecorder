@@ -45,6 +45,57 @@ test('后端会话自动恢复，刷新后无需弹窗，授权仅保留在内�
     assert.ok(!JSON.stringify([...h.stored.values()]).includes('test@example.invalid'));
 });
 
+test('本机时钟领先或落后服务器一天，仍按剩余秒数恢复和上传', async () => {
+    for (const offset of [86400000, -86400000]) {
+        const h = harness({ backend: true, backendSession: true, clientClockOffset: offset,
+            tokenResponse: { accessToken: 'relative-test-only', expiresIn: 3000, expiresAt: Date.now() - 86400000 } });
+        await h.until(() => h.el('driveConnect').textContent === '已连接');
+        h.drive.setRecording(h.recording()); await h.fire('driveUploadCurrent');
+        await h.until(() => h.completed.size === 1);
+        assert.equal(h.authCalls.length, 0);
+    }
+});
+
+test('连接后本机日期前后跳动不影响有效期，单调时间到期后才续期', async () => {
+    const h = harness({ backend: true, backendSession: true });
+    await h.until(() => h.el('driveConnect').textContent === '已连接');
+    h.state.clientClockOffset = 7 * 86400000;
+    h.drive.setRecording(h.recording('ahead')); await h.fire('driveUploadCurrent');
+    await h.until(() => h.completed.size === 1);
+    h.state.clientClockOffset = -7 * 86400000;
+    h.drive.setRecording(h.recording('behind')); await h.fire('driveUploadCurrent');
+    await h.until(() => h.completed.size === 2);
+    assert.equal(h.calls.filter(c => c.url.endsWith('/auth/token')).length, 1);
+    h.state.monotonicMs += 3000001;
+    h.drive.setRecording(h.recording('expired')); await h.fire('driveUploadCurrent');
+    await h.until(() => h.completed.size === 3);
+    assert.equal(h.calls.filter(c => c.url.endsWith('/auth/token')).length, 2);
+});
+
+test('拒绝空凭据、无效或过期的剩余时长，并扣除网络传输耗时', async () => {
+    const responses = [
+        { accessToken: '', expiresIn: 3000 },
+        { accessToken: {}, expiresIn: 3000 },
+        ...[0, -1, null, '3000'].map(expiresIn => ({ accessToken: 'test-only', expiresIn }))
+    ];
+    for (const tokenResponse of responses) {
+        const h = harness({ backend: true, backendSession: true, tokenResponse });
+        await h.until(() => h.el('driveStatus').textContent.includes('凭据无效'));
+        assert.equal(h.el('driveMainProfile').getAttribute('data-connected'), 'false');
+        assert.ok(!h.calls.some(c => c.url.includes('/drive/v3/about')));
+    }
+    const delayed = harness({ backend: true, backendSession: true, tokenTransportMs: 2000,
+        tokenResponse: { accessToken: 'test-only', expiresIn: 1 } });
+    await delayed.until(() => delayed.el('driveStatus').textContent.includes('凭据无效'));
+});
+
+test('旧后端只返回绝对到期时间时仍兼容正常时钟的浏览器', async () => {
+    const h = harness({ backend: true, backendSession: true,
+        tokenResponse: { accessToken: 'legacy-test-only', expiresAt: Date.now() + 3000000 } });
+    await h.until(() => h.el('driveConnect').textContent === '已连接');
+    assert.equal(h.el('driveMainProfile').getAttribute('data-connected'), 'true');
+});
+
 test('恢复连接期间完成的录音会等待恢复再自动上传', async () => {
     const h = harness({ backend: true, backendSession: true, settings: { autoUpload: true } });
     h.drive.setRecording(h.recording());
@@ -128,7 +179,8 @@ function harness(options = {}) {
     let idCount = 0;
     let chunkCount = 0;
     const state = { failChunk: 0, lostFinal: false, unauthorized: false, badLocation: false, hold: null,
-        backendSession: options.backendSession === true, brokerFlow: 'flow-test', failLogout: false, brokerHold: null };
+        backendSession: options.backendSession === true, brokerFlow: 'flow-test', failLogout: false, brokerHold: null,
+        clientClockOffset: options.clientClockOffset || 0, monotonicMs: 1000 };
     const authCalls = [];
     class Element {
         constructor() {
@@ -173,7 +225,9 @@ function harness(options = {}) {
             const route = new URL(url).pathname;
             if (route === '/auth/token') {
                 if (state.brokerHold) await state.brokerHold;
-                return state.backendSession ? json({ accessToken: 'broker-memory-only', expiresAt: Date.now() + 3000000 }) :
+                state.monotonicMs += options.tokenTransportMs || 0;
+                return state.backendSession ? json(options.tokenResponse || { accessToken: 'broker-memory-only',
+                    expiresAt: Date.now() + 3000000, expiresIn: 3000 }) :
                     json({ error: 'no_session' }, 401);
             }
             if (route === '/auth/start') {
@@ -254,7 +308,9 @@ function harness(options = {}) {
         AudioRecorderLibrary: options.library,
         open: () => options.popupBlocked ? null : { location: {}, closed: false, close() { this.closed = true; } },
         localStorage: { getItem: key => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
-        URL, URLSearchParams, Blob, AbortController, fetch, console, Date,
+        URL, URLSearchParams, Blob, AbortController, fetch, console,
+        Date: class extends Date { static now() { return Date.now() + state.clientClockOffset; } },
+        performance: { now: () => state.monotonicMs },
         setTimeout: () => 1, clearTimeout() {},
         google: { accounts: { oauth2: {
             initTokenClient: config => ({ requestAccessToken(args) {

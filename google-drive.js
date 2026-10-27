@@ -37,7 +37,9 @@
     const recordingSaves = new Map();
     const folderCache = new Map();
     const element = id => document.getElementById(id);
-    const connected = () => Boolean(token && account && Date.now() < tokenExpires);
+    // Token duration must not depend on the user's wall clock or the Worker's timezone.
+    const tokenClock = () => typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
+    const connected = () => Boolean(token && account && tokenClock() < tokenExpires);
     function backendUrl() {
         if (extension) return '';
         const value = window.AudioRecorderDriveBackendUrl || settings.backendUrl;
@@ -69,6 +71,7 @@
         const base = backendUrl();
         if (!base) throw new Error('请先配置保持连接的授权服务地址。');
         const controller = new AbortController();
+        const started = tokenClock();
         const timeout = setTimeout(() => controller.abort(), 20000);
         try {
             const response = await fetch(base + path, { method, credentials: 'include', redirect: 'error',
@@ -78,6 +81,11 @@
                 const error = new Error(backendErrors[data.error] || '授权请求失败，请稍后重试。');
                 error.code = data.error;
                 throw error;
+            }
+            if (path.startsWith('/auth/token') && data && typeof data === 'object') {
+                // Deduct the entire round trip, conservatively including server processing.
+                data.clientTokenDeadline = typeof data.expiresIn === 'number' && Number.isFinite(data.expiresIn) && data.expiresIn > 0 ?
+                    started + Math.min(data.expiresIn, 3600) * 1000 : undefined;
             }
             return data;
         } finally { clearTimeout(timeout); }
@@ -98,8 +106,8 @@
                 throw new Error('授权服务返回了无效的 Google 地址。');
             }
             popup.location.href = url.href;
-            const deadline = Date.now() + 9 * 60 * 1000;
-            while (Date.now() < deadline) {
+            const deadline = tokenClock() + 9 * 60 * 1000;
+            while (tokenClock() < deadline) {
                 if (epoch !== authEpoch) throw new Error('连接已取消。');
                 const session = await backendRequest('/auth/session');
                 if (session.connected && session.flow === start.flow) return await backendRequest('/auth/token', 'POST');
@@ -220,10 +228,10 @@
         if (parsed.origin !== API || !/^\/(?:drive\/v3\/|upload\/drive\/v3\/)/.test(parsed.pathname)) {
             throw new Error('上传地址无效，请重试。');
         }
-        if ((!token || Date.now() >= tokenExpires) && !authorizing && (backendUrl() || extension) && settings.rememberConnection) {
+        if ((!token || tokenClock() >= tokenExpires) && !authorizing && (backendUrl() || extension) && settings.rememberConnection) {
             await renewAuthorization();
         }
-        if (!token || Date.now() >= tokenExpires) {
+        if (!token || tokenClock() >= tokenExpires) {
             clearAuth();
             throw new Error('Google 授权已过期，请在设置中重新连接后重试。');
         }
@@ -301,9 +309,14 @@
     }
     async function applyAuthorization(result, epoch) {
         if (epoch !== authEpoch) return;
-        token = result.accessToken || result.value;
-        tokenExpires = result.expiresAt || Date.now() + Math.max(0, result.lifetime - 60) * 1000;
-        if (!token || !Number.isFinite(tokenExpires) || tokenExpires <= Date.now()) throw new Error('授权服务返回的凭据无效。');
+        const value = result.accessToken || result.value;
+        const now = tokenClock();
+        // expiresAt remains only for older backends; new responses use relative lifetime.
+        const expires = Object.hasOwn(result, 'expiresIn') ? result.clientTokenDeadline :
+            typeof result.expiresAt === 'number' ? now + result.expiresAt - Date.now() : now + Math.max(0, result.lifetime - 60) * 1000;
+        if (typeof value !== 'string' || !value.trim() || !Number.isFinite(expires) || expires <= now) throw new Error('授权服务返回的凭据无效。');
+        token = value;
+        tokenExpires = expires;
         const response = await request(API + '/drive/v3/about?fields=user(permissionId,displayName,emailAddress,photoLink)', {}, [], true);
         const profile = (await response.json()).user;
         if (epoch !== authEpoch) return;
@@ -320,7 +333,7 @@
                 clearAuth();
                 message('Google 临时授权已过期，请点击连接。配置授权服务可自动续期。', true);
             }
-        }, Math.max(0, tokenExpires - Date.now()));
+        }, Math.max(0, tokenExpires - tokenClock()));
         render();
     }
     async function nativeToken(interactive) {

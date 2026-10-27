@@ -182,7 +182,10 @@ test('Cloudflare OAuth 后端', async t => {
             const responses = await Promise.all([first, second]);
             for (const response of responses) {
                 assert.equal(response.status, 200);
-                assert.equal((await response.json()).accessToken, 'renewed-access');
+                const data = await response.json();
+                assert.equal(data.accessToken, 'renewed-access');
+                assert.ok(data.expiresIn > 3000 && data.expiresIn <= 3510);
+                assert.ok(data.expiresAt > Date.now());
             }
             assert.equal(h.network.filter(x => x.options.body?.get('grant_type') === 'refresh_token').length, 1);
         });

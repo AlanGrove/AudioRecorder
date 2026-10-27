@@ -236,7 +236,7 @@ export class DriveSession {
     }
     async freshToken(session, force = false) {
         const tokens = await unseal(this.env, session.tokens, session.id);
-        if (force || tokens.expires <= Date.now()) {
+        if (force || tokens.expires <= Date.now() + 30000) {
             let refreshed;
             try { refreshed = await googleToken(this.env, { grant_type: 'refresh_token', refresh_token: tokens.refresh }); }
             catch (error) {
@@ -260,6 +260,7 @@ export class DriveSession {
         if (!current || current.version !== session.version) {
             const error = new Error('reauthorize'); error.status = 401; throw error;
         }
-        return { accessToken: tokens.access, expiresAt: tokens.expires, profile: current.profile };
+        return { accessToken: tokens.access, expiresAt: tokens.expires,
+            expiresIn: Math.max(0, (tokens.expires - Date.now()) / 1000), profile: current.profile };
     }
 }
