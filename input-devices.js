@@ -1,7 +1,7 @@
 /* Enumerating devices never requests microphone access; only Start recording does. */
 (() => {
     'use strict';
-    function createController({ mediaDevices, select, storage, notify, option }) {
+    function createController({ mediaDevices, select, storage, notify, option, userAgent = globalThis.navigator?.userAgent || '' }) {
         const key = 'audioRecorderInputDevice';
         let preferred = '', locked = false, revision = 0;
         try { preferred = storage.getItem(key) || ''; } catch { /* Preferences are optional. */ }
@@ -47,8 +47,19 @@
                     const stream = await mediaDevices.getUserMedia({ audio });
                     const settings = stream.getAudioTracks?.()[0]?.getSettings?.() || {};
                     const processing = ['echoCancellation', 'noiseSuppression', 'autoGainControl'];
-                    notify(processing.some(key => settings[key] === true || typeof settings[key] === 'string') ?
-                        '浏览器报告仍有音频处理开启，电脑声音可能受影响。请尝试其他输入设备并短录音检查。' : '');
+                    if (/\bEdg\//.test(userAgent)) {
+                        // Desktop Edge may report strings; an arbitrary string does not
+                        // establish that processing is enabled or that playback is affected.
+                        const labels = { echoCancellation: '回声消除', noiseSuppression: '降噪', autoGainControl: '自动增益' };
+                        const enabled = processing.filter(key => settings[key] === true ||
+                            (key === 'echoCancellation' && ['all', 'remote-only'].includes(settings[key])));
+                        notify(enabled.length ?
+                            `Edge 报告录音输入已启用：${enabled.map(key => labels[key]).join('、')}。试听正常可继续录音。` : '', 'info');
+                    } else {
+                        // Preserve the existing detection and warning for other browsers.
+                        notify(processing.some(key => settings[key] === true || typeof settings[key] === 'string') ?
+                            '浏览器报告仍有音频处理开启，电脑声音可能受影响。请尝试其他输入设备并短录音检查。' : '');
+                    }
                     void refresh(); // Permission now exposes device labels; keep the chosen input locked.
                     return stream;
                 } catch (error) {
@@ -68,7 +79,10 @@
         window.AudioRecorderInputs = createController({
             mediaDevices: navigator.mediaDevices, select, storage: localStorage,
             option: (label, value) => { const node = document.createElement('option'); node.textContent = label; node.value = value; return node; },
-            notify: text => { const status = document.getElementById('inputDeviceStatus'); status.textContent = text; status.hidden = !text; }
+            notify: (text, level = 'warning') => {
+                const status = document.getElementById('inputDeviceStatus');
+                status.textContent = text; status.hidden = !text; status.dataset.level = level;
+            }
         });
         void window.AudioRecorderInputs.refresh();
     }

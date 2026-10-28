@@ -1,8 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createController } = require('../input-devices.js');
-function harness(saved = '') {
-    const prefs = new Map([['audioRecorderInputDevice', saved]]), notices = [], calls = [];
+function harness(saved = '', userAgent = '') {
+    const prefs = new Map([['audioRecorderInputDevice', saved]]), notices = [], noticeLevels = [], calls = [];
     const select = { value: '', disabled: false, children: [], addEventListener(_name, fn) { this.change = fn; },
         replaceChildren(...nodes) { this.children = nodes; }, appendChild(node) { this.children.push(node); } };
     const state = { devices: [], error: null, enumeration: null, settings: {} };
@@ -12,8 +12,9 @@ function harness(saved = '') {
         addEventListener(_name, fn) { this.devicechange = fn; }
     };
     const controller = createController({ mediaDevices, select, storage: { getItem: key => prefs.get(key), setItem: (key, value) => prefs.set(key, value) },
-        notify: text => notices.push(text), option: (textContent, value) => ({ textContent, value }) });
-    return { controller, select, prefs, notices, calls, mediaDevices, state };
+        userAgent, notify: (text, level) => { notices.push(text); noticeLevels.push(level); },
+        option: (textContent, value) => ({ textContent, value }) });
+    return { controller, select, prefs, notices, noticeLevels, calls, mediaDevices, state };
 }
 const input = (deviceId, label = '') => ({ kind: 'audioinput', deviceId, label });
 test('刷新输入列表不请求麦克风，过滤输出设备和重复默认设备', async () => {
@@ -37,6 +38,58 @@ test('浏览器仍启用音频处理时给出提示，不把成功取得流误�
     await h.controller.getStream(); assert.match(h.notices.at(-1), /仍有音频处理/);
     h.state.settings = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
     h.controller.setLocked(false); await h.controller.getStream(); assert.equal(h.notices.at(-1), '');
+});
+
+const edgeAgent = 'Mozilla/5.0 Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0';
+
+test('Edge 关闭、缺失和未知的音频设置不误报声音异常，录音流和采集约束不变', async () => {
+    for (const key of ['echoCancellation', 'noiseSuppression', 'autoGainControl']) {
+        for (const value of [false, undefined, null, '', 'false', 'disabled', 'unknown', 'true', 0]) {
+            const h = harness('', edgeAgent); h.state.settings = { [key]: value };
+            const stream = await h.controller.getStream();
+            assert.equal(stream.fixture, true);
+            assert.equal(h.notices.at(-1), '', `${key}: ${String(value)}`);
+            assert.deepEqual(h.calls, [{ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }]);
+            assert.equal(h.select.disabled, true);
+        }
+    }
+});
+
+test('Edge 明确开启的处理列出实际项目，只显示中性说明，不推断播放声音异常', async () => {
+    for (const [settings, labels] of [
+        [{ echoCancellation: true }, ['回声消除']],
+        [{ echoCancellation: 'all' }, ['回声消除']],
+        [{ echoCancellation: 'remote-only' }, ['回声消除']],
+        [{ noiseSuppression: true }, ['降噪']],
+        [{ autoGainControl: true }, ['自动增益']],
+        [{ echoCancellation: true, noiseSuppression: true, autoGainControl: true }, ['回声消除', '降噪', '自动增益']]
+    ]) {
+        const h = harness('', edgeAgent); h.state.settings = settings;
+        await h.controller.getStream();
+        for (const label of labels) assert.ok(h.notices.at(-1).includes(label));
+        assert.equal(h.noticeLevels.at(-1), 'info');
+        assert.doesNotMatch(h.notices.at(-1), /电脑声音可能受影响|请尝试其他输入设备/);
+        assert.match(h.notices.at(-1), /试听正常可继续录音/);
+    }
+    // These mode strings are defined only for echoCancellation, not other flags.
+    const h = harness('', edgeAgent); h.state.settings = { noiseSuppression: 'all', autoGainControl: 'remote-only' };
+    await h.controller.getStream(); assert.equal(h.notices.at(-1), '');
+});
+
+test('Chrome、Firefox、Safari、移动 Edge 和未识别浏览器沿用原检测与提示', async () => {
+    for (const userAgent of ['', 'Mozilla/5.0 Chrome/140.0.0.0 Safari/537.36',
+        'Mozilla/5.0 Firefox/140.0', 'Mozilla/5.0 Version/18.0 Safari/605.1.15',
+        'Mozilla/5.0 Chrome/140.0.0.0 EdgA/140.0.0.0']) {
+        for (const settings of [{ echoCancellation: 'all' }, { echoCancellation: 'false' },
+            { noiseSuppression: true }, { autoGainControl: true }]) {
+            const h = harness('', userAgent); h.state.settings = settings;
+            await h.controller.getStream();
+            assert.equal(h.notices.at(-1), '浏览器报告仍有音频处理开启，电脑声音可能受影响。请尝试其他输入设备并短录音检查。');
+            assert.notEqual(h.noticeLevels.at(-1), 'info');
+        }
+        const h = harness('', userAgent); h.state.settings = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+        await h.controller.getStream(); assert.equal(h.notices.at(-1), '');
+    }
 });
 test('未授权时不丢弃以前的选择，授权后显示设备名称', async () => {
     const h = harness('usb'); await h.controller.refresh(); assert.equal(h.select.value, 'usb');

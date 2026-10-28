@@ -73,6 +73,7 @@ body {
 .recorder-input #inputDevice { flex: 1; width: 100%; max-width: 155px; text-overflow: ellipsis; }
 .recorder-input #inputDevice:disabled { opacity: .6; }
 .input-device-status { color: #a45224; margin: -5px 0 10px; font-size: 11px; text-align: left; }
+.input-device-status[data-level="info"] { color: #6b7280; }
 .input-device-status[hidden] { display: none; }
 .background-box .filename-builder { width: 100%; margin: 0; }
 .background-box .filename-preview {
