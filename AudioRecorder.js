@@ -1,6 +1,5 @@
 ﻿let mediaRecorder;
 let recordedChunks = [];
-let timerInterval;
 let totalSeconds = 0;
 let timeAdjustment = 0;  // 新增调整的秒数
 let canvas;
@@ -15,7 +14,12 @@ let activeAudioStream = null;
 let activeAudioContext = null;
 let waveformAnimationId = null;
 let isFinalizingRecording = false;
+let isStartingRecording = false;
+let activeMp3Processor = null;
 let activeRecoverySession = null;
+const recordingClock = window.AudioRecorderControls.createRecordingClock({
+    onTick(seconds) { totalSeconds = seconds; updateTimerDisplay(); }
+});
 const AUTO_DOWNLOAD_STORAGE_KEY = 'audioRecorderAutoDownload';
 function isAutoDownloadEnabled() {
     return localStorage.getItem(AUTO_DOWNLOAD_STORAGE_KEY) !== 'false';
@@ -106,15 +110,12 @@ function setCopyPreference(preference) {
 
 // 启动计时器
 function startTimer() {
-    timerInterval = setInterval(() => {
-        totalSeconds++;
-        updateTimerDisplay();
-    }, 1000);
+    recordingClock.start();
 }
 
 // 停止计时器
 function stopTimer() {
-    clearInterval(timerInterval);
+    recordingClock.pause();
 }
 
 // 更新计时器显示（不影响 totalSeconds 计时）
@@ -646,7 +647,7 @@ function encodeMp3Samples(floatSamples) {
 async function createMp3InputProcessor(audioContext, source) {
     if (audioContext.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
         try {
-            const workletUrl = new URL('AudioRecorderWorklet.js', window.location.href).href;
+            const workletUrl = new URL('AudioRecorderWorklet.js?controls=pause-hold', window.location.href).href;
             await audioContext.audioWorklet.addModule(workletUrl);
             const workletNode = new AudioWorkletNode(audioContext, 'audio-recorder-processor', {
                 numberOfInputs: 1,
@@ -668,6 +669,7 @@ async function createMp3InputProcessor(audioContext, source) {
             workletNode.connect(audioContext.destination);
             return {
                 type: 'audioWorklet',
+                setPaused(paused) { workletNode.port.postMessage({ type: 'setPaused', paused }); },
                 flush() {
                     if (flushResolver) return Promise.resolve();
                     return new Promise(resolve => {
@@ -695,13 +697,15 @@ async function createMp3InputProcessor(audioContext, source) {
     }
 
     const processor = audioContext.createScriptProcessor(2048, 1, 1);
+    let paused = false;
     processor.onaudioprocess = event => {
-        encodeMp3Samples(event.inputBuffer.getChannelData(0));
+        if (!paused) encodeMp3Samples(event.inputBuffer.getChannelData(0));
     };
     source.connect(processor);
     processor.connect(audioContext.destination);
     return {
         type: 'scriptProcessor',
+        setPaused(value) { paused = value; },
         flush() {
             return Promise.resolve();
         },
@@ -712,6 +716,8 @@ async function createMp3InputProcessor(audioContext, source) {
     };
 }
 function stopActiveAudioResources() {
+    stopTimer();
+    activeMp3Processor = null;
     window.AudioRecorderInputs?.setLocked(false);
     if (waveformAnimationId) {
         cancelAnimationFrame(waveformAnimationId);
@@ -770,22 +776,66 @@ function beforeUnloadListener(event) {
     return '';
 }
 
-document.getElementById('toggle').addEventListener('click', async () => {
+function isRecordingActive() {
+    return mediaRecorder && ['recording', 'paused'].includes(mediaRecorder.state);
+}
+function renderRecordingControl(paused = false) {
     const button = document.getElementById('toggle');
-    if (isFinalizingRecording) return;
-    const isRecording = button.classList.contains('recording');
-
-    if (isRecording) {
-        isFinalizingRecording = true;
-        button.disabled = true;
-        document.getElementById('recorderStatus').textContent = '正在处理…';
-        mediaRecorder.stop();
-        stopTimer();
-        button.classList.remove('recording');
-        button.setAttribute('aria-label', '开始录音');
-        window.removeEventListener('beforeunload', beforeUnloadListener); // 移除beforeunload事件监听器
-        document.title = '🟢准备录音';  // 更新网页标题为录音
-    } else {
+    button.classList.add('recording');
+    button.classList.toggle('paused', paused);
+    button.setAttribute('aria-label', paused ? '继续录音' : '暂停录音');
+    button.title = (paused ? '单击继续录音' : '单击暂停录音') + '；长按 0.8 秒展开停止菜单';
+    document.getElementById('recorderControlHint').textContent = paused ? '单击继续 · 长按更多' : '单击暂停 · 长按更多';
+    document.getElementById('recorderStatus').textContent = paused ? '已暂停' : '录音中';
+    document.title = paused ? '⏸ 录音已暂停' : '🔴⏰正在录音中...';
+}
+function pauseOrResumeRecording() {
+    const paused = mediaRecorder.state === 'recording';
+    try {
+        if (paused) {
+            mediaRecorder.pause();
+            activeMp3Processor.setPaused(true);
+            stopTimer();
+            if (waveformAnimationId) cancelAnimationFrame(waveformAnimationId);
+            waveformAnimationId = null;
+            clearFrequencySpectrum();
+            // Preserve the current WebM prefix and MP3 recovery session; do not finalize/upload.
+            try { mediaRecorder.requestData(); } catch (_) { /* Periodic/final data events remain available. */ }
+            void activeRecoverySession?.flush();
+        } else {
+            activeMp3Processor.setPaused(false);
+            mediaRecorder.resume();
+            startTimer();
+            if (!waveformAnimationId) drawFrequencySpectrum();
+        }
+        renderRecordingControl(paused);
+    } catch (error) {
+        console.error('切换录音暂停状态失败:', error);
+        // Restore both formats to their previous state if either operation fails.
+        activeMp3Processor?.setPaused(!paused);
+        if (paused && mediaRecorder.state === 'paused') mediaRecorder.resume();
+        if (!paused && mediaRecorder.state === 'recording') mediaRecorder.pause();
+        if (paused) startTimer(); else stopTimer();
+        renderRecordingControl(!paused);
+        alert('无法切换暂停状态，请重试或长按按钮后停止并保存录音。');
+    }
+}
+function stopRecording() {
+    const button = document.getElementById('toggle');
+    if (isFinalizingRecording || isStartingRecording || !isRecordingActive()) return;
+    recorderButtonControls.closeMenu();
+    isFinalizingRecording = true;
+    button.disabled = true;
+    document.getElementById('recorderStatus').textContent = '正在处理…';
+    mediaRecorder.stop();
+    stopTimer();
+    button.classList.remove('recording', 'paused');
+    button.setAttribute('aria-label', '开始录音');
+    window.removeEventListener('beforeunload', beforeUnloadListener); // 移除beforeunload事件监听器
+    document.title = '🟢准备录音';
+}
+async function startRecording() {
+    const button = document.getElementById('toggle');
         if (recordedChunks.length > 0 || mp3Data.length > 0) {  // 检查是否有未删除的录音
             const confirmation = await showRestartRecordingMenu();
 
@@ -794,7 +844,7 @@ document.getElementById('toggle').addEventListener('click', async () => {
             }
 
             // 如果选择用户确认，执行重置操作
-            clearInterval(timerInterval);
+            recordingClock.reset();
             totalSeconds = 0;  // 重置时间
             updateTimerDisplay();  // 更新显示为 00:00:0
             recordedChunks = [];
@@ -807,7 +857,8 @@ document.getElementById('toggle').addEventListener('click', async () => {
 
         window.AudioRecorderDrive?.setRecording(null);
         button.disabled = true;
-        (window.AudioRecorderInputs?.getStream() || navigator.mediaDevices.getUserMedia({
+        recordingClock.reset();
+        return (window.AudioRecorderInputs?.getStream() || navigator.mediaDevices.getUserMedia({
             audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
         }))
             .then(async stream => {
@@ -838,6 +889,7 @@ document.getElementById('toggle').addEventListener('click', async () => {
                     sampleRate: audioContext.sampleRate, bitrate: selectedBitrate });
                 activeRecoverySession = recoverySession || null;
                 const mp3Processor = await createMp3InputProcessor(audioContext, source);
+                activeMp3Processor = mp3Processor;
 
                 mediaRecorder = new MediaRecorder(stream, {
                     mimeType: 'audio/webm'
@@ -899,7 +951,7 @@ document.getElementById('toggle').addEventListener('click', async () => {
                 document.getElementById('downloadMP3').onclick = downloadCurrentMP3;
                 // Capture independent blobs and filenames before the next recording can start.
                 const completedRecording = {
-                    id: recordingId, createdAt: recordingCreatedAt, duration: audioContext.currentTime,
+                    id: recordingId, createdAt: recordingCreatedAt, duration: recordingClock.seconds(),
                     mp3: { blob: new Blob(mp3Data, { type: 'audio/mpeg' }), name: generateFilename('mp3') },
                     webm: { blob: audioBlob, name: generateFilename('webm') }
                 };
@@ -917,19 +969,20 @@ document.getElementById('toggle').addEventListener('click', async () => {
                         alert('录音处理失败，请保留当前页面并尝试下载录音。');
                     } finally {
                         if (activeRecoverySession === recoverySession) activeRecoverySession = null;
+                        if (activeMp3Processor === mp3Processor) activeMp3Processor = null;
                         window.AudioRecorderInputs?.setLocked(false);
                         isFinalizingRecording = false;
                         button.disabled = false;
                         document.getElementById('recorderStatus').textContent = '准备录音';
+                        document.getElementById('recorderControlHint').textContent = '单击开始录音';
+                        button.title = '开始录音';
                     }
                 };
 
                 mediaRecorder.start(2000);
                 button.disabled = false;
                 startTimer();
-                button.classList.add('recording');
-                button.setAttribute('aria-label', '停止录音');
-                document.getElementById('recorderStatus').textContent = '录音中';
+                renderRecordingControl();
                 window.addEventListener('beforeunload', beforeUnloadListener); // 添加beforeunload事件监听器
                 document.title = '🔴⏰正在录音中...';  // 更新网页标题为录音中
             })
@@ -941,7 +994,18 @@ document.getElementById('toggle').addEventListener('click', async () => {
                 console.error("无法访问媒体设备:", error);
                 alert("无法访问麦克风，请检查权限设置。");
             });
-    }
+}
+async function activateRecording() {
+    if (isFinalizingRecording || isStartingRecording) return;
+    if (isRecordingActive()) { pauseOrResumeRecording(); return; }
+    isStartingRecording = true;
+    try { await startRecording(); }
+    finally { isStartingRecording = false; }
+}
+const recorderButtonControls = window.AudioRecorderControls.createButtonControls({
+    button: document.getElementById('toggle'), menu: document.getElementById('stopRecordingMenu'),
+    stopButton: document.getElementById('stopRecordingButton'),
+    onActivate: activateRecording, onStop: stopRecording, isActive: isRecordingActive
 });
 
 

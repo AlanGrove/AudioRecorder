@@ -818,7 +818,7 @@ button {
 
   <link rel="stylesheet" href="shared/module-switcher.css">
   <link rel="stylesheet" href="google-drive.css">
-  <link rel="stylesheet" href="recorder.css?style=edge-processing">
+  <link rel="stylesheet" href="recorder.css?style=pause-hold">
   <link rel="stylesheet" href="recording-library.css?recovery=checkpoint">
 </head>
 <body>
@@ -934,7 +934,12 @@ button {
     </div>
 <div class="timer-row">
     <div class="record-control-wrap">
-        <button id="toggle" type="button" aria-label="开始录音"><span class="record-icon" aria-hidden="true"></span></button>
+        <button id="toggle" type="button" aria-label="开始录音" aria-describedby="recorderControlHint" aria-haspopup="menu" aria-controls="stopRecordingMenu" aria-expanded="false" title="开始录音"><span class="record-icon" aria-hidden="true"></span></button>
+        <span id="recorderControlHint" class="recorder-control-hint">单击开始录音</span>
+        <div id="stopRecordingMenu" class="stop-recording-menu" role="menu" aria-label="录音操作" hidden>
+            <button id="stopRecordingButton" type="button" role="menuitem"><span class="stop-recording-icon" aria-hidden="true"></span>停止并保存</button>
+            <p>保存本次录音到列表</p>
+        </div>
         <div id="restartRecordingMenu" class="restart-recording-menu" aria-hidden="true">
             <p class="restart-menu-text">是否删除当前录音并重新开始录音？</p>
             <div class="restart-menu-actions">
@@ -1049,7 +1054,8 @@ button {
 <script src="recording-library.js?recovery=checkpoint"></script>
 <script src="google-drive.js?security=session-csp"></script>
 <script src="input-devices.js?audio=edge-processing"></script>
-<script src="AudioRecorder.js?recovery=checkpoint"></script>
+<script src="recorder-controls.js?controls=pause-hold"></script>
+<script src="AudioRecorder.js?controls=pause-hold"></script>
     <script src="lamejs.iife.js"></script>
 </body>
 </html>

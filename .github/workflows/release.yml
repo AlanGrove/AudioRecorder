@@ -69,6 +69,7 @@ jobs:
             "recording-library.css",
             "recorder.css",
             "AudioRecorderWorklet.js",
+            "recorder-controls.js",
             "background.js",
             "lamejs.iife.js",
             "LICENSE-lamejs.iife.js.txt",

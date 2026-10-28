@@ -4,7 +4,12 @@
         this.bufferSize = 2048;
         this.sampleBuffer = new Float32Array(this.bufferSize);
         this.sampleOffset = 0;
+        this.paused = false;
         this.port.onmessage = event => {
+            if (event.data?.type === 'setPaused') {
+                if (event.data.paused) this.flushSamples();
+                this.paused = event.data.paused === true;
+            }
             if (event.data?.type === 'flush') {
                 this.flushSamples();
                 this.port.postMessage({ type: 'flushed' });
@@ -36,7 +41,7 @@
 
     process(inputs, outputs) {
         const input = inputs[0]?.[0];
-        if (input) {
+        if (input && !this.paused) {
             this.pushSamples(input);
         }
 
