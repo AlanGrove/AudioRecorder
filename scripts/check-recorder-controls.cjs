@@ -29,8 +29,8 @@ async function start(page) {
     await page.locator('#toggle').click();
     await page.waitForFunction(() => document.getElementById('recorderStatus').textContent === '录音中');
 }
-async function finish(page) {
-    await hold(page); await page.locator('#stopRecordingButton').click();
+async function finish(page, primary = false) {
+    await hold(page); await page.locator(primary ? '#toggle' : '#stopRecordingButton').click();
     await page.waitForFunction(() => document.getElementById('recorderStatus').textContent === '准备录音');
 }
 async function audioStats(page) {
@@ -85,12 +85,15 @@ async function audioStats(page) {
         assert.equal(await page.evaluate(() => localStorage.getItem('fixtureCloudFiles')), null);
         assert.equal(downloads.length, 0);
         await hold(page); assert.equal(await page.locator('#stopRecordingMenu').isVisible(), true);
+        assert.equal(await page.locator('#toggle').getAttribute('aria-label'), '停止并保存');
+        assert.equal(await page.locator('#toggle').evaluate(el => getComputedStyle(el.querySelector('.record-icon')).width), '18px');
         assert.equal(await page.locator('#recorderStatus').textContent(), '已暂停');
         if (screenshot) await page.screenshot({ path: screenshot });
         await page.locator('h1').click(); assert.equal(await page.locator('#stopRecordingMenu').isVisible(), false);
+        assert.equal(await page.locator('#toggle').getAttribute('aria-label'), '继续录音');
         assert.equal(await page.locator('#recorderStatus').textContent(), '已暂停');
         await page.locator('#toggle').click(); await page.waitForTimeout(2100); await page.locator('#toggle').click();
-        await finish(page); // Stop directly from paused state.
+        await finish(page, true); // Stop from paused state by clicking the armed round button.
         await page.waitForFunction(() => JSON.parse(localStorage.getItem('fixtureCloudFiles') || '[]').some(([, f]) => f.size));
         const records = await rows(page, 'records'); assert.equal(records.length, 1);
         assert.equal((await rows(page, 'drafts')).length, 0); assert.equal((await rows(page, 'chunks')).length, 0);
@@ -120,6 +123,14 @@ async function audioStats(page) {
         await page.locator('#libraryClose').click();
         await start(page); await page.waitForTimeout(1200); await hold(page);
         assert.equal(await page.locator('#recorderStatus').textContent(), '录音中');
+        assert.equal(await page.locator('#toggle').getAttribute('aria-label'), '停止并保存');
+        const whileMenuOpen = await page.locator('#timer').textContent();
+        await page.waitForFunction(previous => document.getElementById('timer').textContent !== previous, whileMenuOpen);
+        await page.locator('h1').click();
+        assert.equal(await page.locator('#recorderStatus').textContent(), '录音中');
+        assert.equal(await page.locator('#toggle').getAttribute('aria-label'), '暂停录音');
+        assert.equal(await page.locator('#stopRecordingMenu').isVisible(), false);
+        await hold(page);
         await page.locator('#stopRecordingButton').click();
         await page.waitForFunction(() => document.getElementById('recorderStatus').textContent === '准备录音');
         assert.equal((await rows(page, 'records')).length, 3);

@@ -50,6 +50,10 @@ body {
     width: 0; height: 0; border: 10px solid transparent; border-right: 0; border-left: 16px solid #fff;
     margin-left: 4px; background: none;
 }
+.background-box #toggle.stop-ready { background: #eb5656; box-shadow: 0 4px 15px #eb565630; }
+.background-box #toggle.stop-ready .record-icon {
+    width: 18px; height: 18px; margin: 0; border: 0; border-radius: 4px; background: #fff;
+}
 .background-box #toggle:disabled { opacity: .6; cursor: wait; transform: none; }
 .background-box #toggle:focus-visible { outline: 3px solid #2384dc; outline-offset: 4px; }
 .record-control-wrap { flex: 0 0 64px; }

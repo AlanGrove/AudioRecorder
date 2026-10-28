@@ -18,10 +18,11 @@
             reset() { pause(); elapsed = 0; tick(); }
         });
     }
-    function createButtonControls({ button, menu, stopButton, onActivate, onStop, isActive,
+    function createButtonControls({ button, menu, stopButton, hint, onActivate, onStop, isActive,
         document: doc = button.ownerDocument, window: win = doc.defaultView,
         setTimeout: later = globalThis.setTimeout, clearTimeout: cancel = globalThis.clearTimeout }) {
         let timer = null, pointer = null, origin = null, suppressClick = false;
+        let originalButton = null;
         const listeners = [];
         const contains = (element, target) => element === target || element.contains(target);
         const open = () => !menu.hidden;
@@ -32,10 +33,22 @@
         function cancelPress() { if (timer !== null) cancel(timer); timer = null; pointer = null; origin = null; }
         function closeMenu(focus = false) {
             menu.hidden = true; button.setAttribute('aria-expanded', 'false');
+            button.classList.toggle('stop-ready', false);
+            if (originalButton) {
+                button.setAttribute('aria-label', originalButton.label);
+                button.title = originalButton.title;
+                if (hint) hint.textContent = originalButton.hint;
+                originalButton = null;
+            }
             if (focus) button.focus({ preventScroll: true });
         }
         function openMenu() {
-            if (button.disabled || !isActive()) return;
+            if (button.disabled || !isActive() || open()) return;
+            originalButton = { label: button.getAttribute('aria-label'), title: button.title, hint: hint?.textContent };
+            button.classList.toggle('stop-ready', true);
+            button.setAttribute('aria-label', '停止并保存');
+            button.title = '单击停止并保存；点击空白处取消';
+            if (hint) hint.textContent = '单击停止并保存';
             menu.hidden = false; button.setAttribute('aria-expanded', 'true');
             stopButton.focus({ preventScroll: true });
         }
@@ -43,7 +56,7 @@
         listen(button, 'pointerdown', event => {
             if (button.disabled || event.button !== 0 || event.isPrimary === false || pointer !== null) return;
             suppressClick = false;
-            if (open()) { closeMenu(); suppressClick = true; return; }
+            if (open()) return;
             if (!isActive()) return;
             pointer = event.pointerId; origin = { x: event.clientX, y: event.clientY };
             timer = later(() => {
@@ -64,7 +77,11 @@
         listen(button, 'click', event => {
             if (suppressClick && event.detail !== 0) { suppressClick = false; event.preventDefault(); return; }
             suppressClick = false;
-            if (open()) { closeMenu(true); return; }
+            if (open()) {
+                closeMenu(true); cancelPress();
+                if (!button.disabled && isActive()) void onStop();
+                return;
+            }
             if (!button.disabled) void onActivate();
         });
         listen(doc, 'pointerdown', event => {

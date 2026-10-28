@@ -1012,6 +1012,7 @@ async function activateRecording() {
 }
 const recorderButtonControls = window.AudioRecorderControls.createButtonControls({
     button: document.getElementById('toggle'), menu: document.getElementById('stopRecordingMenu'),
+    hint: document.getElementById('recorderControlHint'),
     stopButton: document.getElementById('stopRecordingButton'),
     onActivate: activateRecording, onStop: stopRecording, isActive: isRecordingActive
 });
