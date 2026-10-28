@@ -3,6 +3,8 @@
  * NODE_PATH may point to a preinstalled Playwright; no browser download is needed.
  */
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { chromium } = require('playwright');
 const { createPreviewServer } = require('./preview-recording-library.cjs');
 const channel = process.argv.includes('--edge') ? 'msedge' : 'chrome';
@@ -68,6 +70,8 @@ async function audioStats(page) {
         assert.equal(await page.locator('#autoDownloadToggle').isChecked(), true);
         await start(page); await page.waitForTimeout(2250);
         assert.equal(await page.evaluate(() => activeMp3Processor.type), fallback ? 'scriptProcessor' : 'audioWorklet');
+        assert.equal(await page.evaluate(() => activeMp3Encoder.type), 'worker');
+        assert.equal(await page.evaluate(() => typeof window.lamejs), 'undefined');
         await page.locator('#toggle').click();
         await page.waitForFunction(() => document.getElementById('recorderStatus').textContent === '已暂停');
         const time = await page.locator('#timer').textContent();
@@ -90,6 +94,7 @@ async function audioStats(page) {
         await page.waitForFunction(() => JSON.parse(localStorage.getItem('fixtureCloudFiles') || '[]').some(([, f]) => f.size));
         const records = await rows(page, 'records'); assert.equal(records.length, 1);
         assert.equal((await rows(page, 'drafts')).length, 0); assert.equal((await rows(page, 'chunks')).length, 0);
+        assert.equal(await page.evaluate(() => activeMp3Encoder), null);
         const durations = await audioStats(page);
         assert.ok(records[0].duration > 4 && records[0].duration < 6, JSON.stringify(records));
         for (const format of ['mp3', 'webm']) {
@@ -119,9 +124,41 @@ async function audioStats(page) {
         await page.waitForFunction(() => document.getElementById('recorderStatus').textContent === '准备录音');
         assert.equal((await rows(page, 'records')).length, 3);
         assert.deepEqual(errors, []); assert.deepEqual(dialogs, []);
+        if (process.argv.includes('--failure')) {
+            // Crash a real encoder Worker after receiving about 2.5 seconds of PCM.
+            const code = fs.readFileSync(path.join(__dirname, '../mp3-encoder-worker.js'), 'utf8') + `
+const originalHandler = self.onmessage; let received = 0;
+self.onmessage = event => { if (event.data.type === 'encode' && ++received === 60) throw new Error('fixture worker failure'); originalHandler(event); };`;
+            await page.route('**/mp3-encoder-worker.js*', r => r.fulfill({ status: 200, contentType: 'text/javascript', body: code }));
+            await page.reload(); await start(page);
+            await page.waitForFunction(() => document.getElementById('recorderStatus').textContent === '准备录音');
+            assert.equal((await rows(page, 'records')).length, 3); // No partial recording marked complete/uploaded.
+            const failedDraft = (await rows(page, 'drafts'))[0];
+            assert.ok(failedDraft.mp3Bytes > 0); assert.ok(failedDraft.webmBytes > 0);
+            assert.equal(await page.locator('#downloadWEBM').isEnabled(), true);
+            assert.equal(await page.evaluate(() => activeAudioStream === null && activeMp3Encoder === null), true);
+            assert.match(dialogs.at(-1), /MP3 处理失败/);
+            const count = downloads.length; await page.locator('#downloadWEBM').click();
+            await page.waitForTimeout(200); assert.equal(downloads.length, count + 1); assert.match(downloads.at(-1), /\.webm$/);
+            await page.reload(); await page.locator('#recoveryOpen').click();
+            await page.getByRole('button', { name: '恢复到列表', exact: true }).click();
+            await page.waitForFunction(() => document.querySelectorAll('#libraryRows .library-row').length === 4);
+            assert.ok((await rows(page, 'records')).find(r => r.id === failedDraft.id)?.recovered);
+            await page.locator('#libraryClose').click();
+            await page.unroute('**/mp3-encoder-worker.js*');
+            await page.route('**/mp3-encoder-worker.js*', r => r.abort()); await page.reload();
+            const previousDialogs = dialogs.length; await page.locator('#toggle').click();
+            await page.waitForFunction(() => !document.getElementById('toggle').disabled);
+            assert.equal(dialogs.length, previousDialogs + 1); assert.match(dialogs.at(-1), /无法开始录音/);
+            assert.equal(await page.evaluate(() => activeAudioStream === null && activeMp3Encoder === null), true);
+            assert.equal((await rows(page, 'records')).length, 4);
+            assert.deepEqual(errors, []);
+        }
         console.log(JSON.stringify({ channel, processor: fallback ? 'scriptProcessor' : 'audioWorklet',
+            encoder: 'dedicated-worker', pageHasLame: false,
             activeSeconds: records[0].duration, ...durations, restoredSeconds: restored.duration,
-            savedOnce: true, autoDownload: true, mockedAutoUpload: true, pausedRecovery: true, errors }, null, 2));
+            savedOnce: true, autoDownload: true, mockedAutoUpload: true, pausedRecovery: true,
+            workerFailureRecovery: process.argv.includes('--failure'), errors }, null, 2));
         await context.close();
     } finally { if (browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

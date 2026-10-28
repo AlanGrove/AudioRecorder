@@ -43,7 +43,7 @@ document.getElementById('fixtureAdd').onclick=async()=>{
 const types = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png','.svg':'image/svg+xml'};
 // A preview must never serve backend configuration, credential files or arbitrary source.
 const assets = new Set(['/', '/index.html', '/AudioRecorder.html', '/drive-backend-config.js',
- '/AudioRecorder.js', '/AudioRecorderWorklet.js', '/recorder-controls.js', '/recording-recovery.js', '/recording-library.js',
+ '/AudioRecorder.js', '/AudioRecorderWorklet.js', '/recorder-controls.js', '/mp3-encoder.js', '/mp3-encoder-worker.js', '/recording-recovery.js', '/recording-library.js',
  '/google-drive.js', '/input-devices.js', '/lamejs.iife.js', '/recorder.css', '/recording-library.css',
  '/google-drive.css', '/icons/icon16.png', '/icons/icon48.png', '/icons/icon128.png', '/icons/google-drive.svg']);
 function createPreviewServer() { return http.createServer((req,res)=>{

@@ -7,12 +7,13 @@ let canvasContext;
 let analyser;
 let dataArray;
 let bufferLength;
-let mp3encoder;
+let activeMp3Encoder = null;
 let mp3Data = [];
 let copyPreference = 'plain'; // 默认复制选项
 let activeAudioStream = null;
 let activeAudioContext = null;
 let waveformAnimationId = null;
+let lastWaveformDraw = -Infinity;
 let isFinalizingRecording = false;
 let isStartingRecording = false;
 let activeMp3Processor = null;
@@ -181,6 +182,9 @@ function clearFrequencySpectrum() {
 function drawFrequencySpectrum() {
     if (!analyser || !canvasContext) return;
     waveformAnimationId = requestAnimationFrame(drawFrequencySpectrum);
+    const now = performance.now();
+    if (document.hidden || now - lastWaveformDraw < 50) return;
+    lastWaveformDraw = now;
     analyser.getByteFrequencyData(dataArray);
     canvasContext.fillStyle = 'rgb(250, 250, 250)';
     canvasContext.fillRect(0, 0, canvas.width, canvas.height);
@@ -630,24 +634,14 @@ function initFilenameBuilder() {
     renderFilenameBuilder();
 }
 function encodeMp3Samples(floatSamples) {
-    if (!mp3encoder || !floatSamples?.length) return;
-    const samples = new Int16Array(floatSamples.length);
-    for (let i = 0; i < floatSamples.length; i++) {
-        samples[i] = Math.max(-1, Math.min(1, floatSamples[i])) * 32767;
-    }
-
-    const mp3Buffer = mp3encoder.encodeBuffer(samples);
-    if (mp3Buffer.length > 0) {
-        const chunk = new Int8Array(mp3Buffer);
-        mp3Data.push(chunk);
-        activeRecoverySession?.addMp3(chunk);
-    }
+    if (!activeMp3Encoder || activeMp3Encoder.error || !floatSamples?.length) return;
+    activeMp3Encoder.encode(floatSamples);
 }
 
 async function createMp3InputProcessor(audioContext, source) {
     if (audioContext.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
         try {
-            const workletUrl = new URL('AudioRecorderWorklet.js?controls=pause-hold', window.location.href).href;
+            const workletUrl = new URL('AudioRecorderWorklet.js?audio=worker-encoding', window.location.href).href;
             await audioContext.audioWorklet.addModule(workletUrl);
             const workletNode = new AudioWorkletNode(audioContext, 'audio-recorder-processor', {
                 numberOfInputs: 1,
@@ -672,13 +666,13 @@ async function createMp3InputProcessor(audioContext, source) {
                 setPaused(paused) { workletNode.port.postMessage({ type: 'setPaused', paused }); },
                 flush() {
                     if (flushResolver) return Promise.resolve();
-                    return new Promise(resolve => {
+                    return new Promise((resolve, reject) => {
                         const timeoutId = setTimeout(() => {
                             if (flushResolver) {
                                 flushResolver = null;
-                                resolve();
+                                reject(new Error('音频采样收尾超时，请保留 WebM 或恢复备份。'));
                             }
-                        }, 250);
+                        }, 5000);
                         flushResolver = () => {
                             clearTimeout(timeoutId);
                             resolve();
@@ -699,7 +693,8 @@ async function createMp3InputProcessor(audioContext, source) {
     const processor = audioContext.createScriptProcessor(2048, 1, 1);
     let paused = false;
     processor.onaudioprocess = event => {
-        if (!paused) encodeMp3Samples(event.inputBuffer.getChannelData(0));
+        // Web Audio owns this buffer. Transfer an independent copy to the encoder worker.
+        if (!paused) encodeMp3Samples(event.inputBuffer.getChannelData(0).slice());
     };
     source.connect(processor);
     processor.connect(audioContext.destination);
@@ -707,6 +702,7 @@ async function createMp3InputProcessor(audioContext, source) {
         type: 'scriptProcessor',
         setPaused(value) { paused = value; },
         flush() {
+            paused = true;
             return Promise.resolve();
         },
         disconnect() {
@@ -717,7 +713,10 @@ async function createMp3InputProcessor(audioContext, source) {
 }
 function stopActiveAudioResources() {
     stopTimer();
+    activeMp3Processor?.disconnect();
     activeMp3Processor = null;
+    activeMp3Encoder?.destroy();
+    activeMp3Encoder = null;
     window.AudioRecorderInputs?.setLocked(false);
     if (waveformAnimationId) {
         cancelAnimationFrame(waveformAnimationId);
@@ -883,13 +882,22 @@ async function startRecording() {
 
                 // 获取选择的比特率
                 const selectedBitrate = parseInt(document.getElementById('bitrate').value);
-                mp3encoder = new lamejs.Mp3Encoder(1, audioContext.sampleRate, selectedBitrate);
                 const recoverySession = await window.AudioRecorderLibrary?.beginRecording({ id: recordingId,
                     createdAt: recordingCreatedAt, mp3Name: generateAudioRecorderFilename('mp3'), webmName: generateAudioRecorderFilename('webm'),
                     sampleRate: audioContext.sampleRate, bitrate: selectedBitrate });
                 activeRecoverySession = recoverySession || null;
+                const encoder = window.AudioRecorderMp3.createEncoder({ sampleRate: audioContext.sampleRate, bitrate: selectedBitrate,
+                    onChunk(chunk) { mp3Data.push(chunk); recoverySession?.addMp3(chunk); },
+                    onError(error) {
+                        console.error('MP3 后台编码失败:', error);
+                        if (isRecordingActive() && !isFinalizingRecording) stopRecording();
+                    }
+                });
+                activeMp3Encoder = encoder;
+                await encoder.ready;
                 const mp3Processor = await createMp3InputProcessor(audioContext, source);
                 activeMp3Processor = mp3Processor;
+                if (encoder.error) throw encoder.error;
 
                 mediaRecorder = new MediaRecorder(stream, {
                     mimeType: 'audio/webm'
@@ -904,7 +912,8 @@ async function startRecording() {
 
                 mediaRecorder.onstop = async function() {
                     try {
-                    await mp3Processor.flush();
+                    let inputFlushError;
+                    try { await mp3Processor.flush(); } catch (error) { inputFlushError = error; }
                     mp3Processor.disconnect();
                     source.disconnect();
                     stream.getTracks().forEach(track => track.stop());
@@ -936,12 +945,9 @@ async function startRecording() {
                     downloadAudio(audioBlob, filename);
                 };
                 // 下载MP3
-                const finalMp3Buffer = mp3encoder.flush();
-                if (finalMp3Buffer.length > 0) {
-                    const chunk = new Int8Array(finalMp3Buffer);
-                    mp3Data.push(chunk);
-                    recoverySession?.addMp3(chunk);
-                }
+                if (inputFlushError) throw inputFlushError;
+                // The input flush posts every remaining PCM block before this FIFO finish barrier.
+                await encoder.finish();
                 document.getElementById('downloadMP3').disabled = false;
                 const downloadCurrentMP3 = () => {
                     const mp3Blob = new Blob(mp3Data, { type: 'audio/mp3' });
@@ -966,8 +972,10 @@ async function startRecording() {
                         await window.AudioRecorderLibrary?.abandonRecording(recoverySession);
                         stopActiveAudioResources();
                         console.error('录音处理失败:', error);
-                        alert('录音处理失败，请保留当前页面并尝试下载录音。');
+                        alert('MP3 处理失败，请下载本页的 WebM 录音，或打开列表恢复已保护部分。');
                     } finally {
+                        encoder.destroy();
+                        if (activeMp3Encoder === encoder) activeMp3Encoder = null;
                         if (activeRecoverySession === recoverySession) activeRecoverySession = null;
                         if (activeMp3Processor === mp3Processor) activeMp3Processor = null;
                         window.AudioRecorderInputs?.setLocked(false);
@@ -991,8 +999,8 @@ async function startRecording() {
                 activeRecoverySession = null;
                 button.disabled = false;
                 stopActiveAudioResources();
-                console.error("无法访问媒体设备:", error);
-                alert("无法访问麦克风，请检查权限设置。");
+                console.error('录音启动失败:', error);
+                alert('无法开始录音，请检查麦克风权限和网络，刷新页面后重试。');
             });
 }
 async function activateRecording() {

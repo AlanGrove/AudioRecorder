@@ -11,6 +11,7 @@
                 this.paused = event.data.paused === true;
             }
             if (event.data?.type === 'flush') {
+                this.paused = true;
                 this.flushSamples();
                 this.port.postMessage({ type: 'flushed' });
             }

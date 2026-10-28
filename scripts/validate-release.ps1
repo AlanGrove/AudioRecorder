@@ -72,6 +72,8 @@ $requiredFiles = @(
     "recorder.css",
     "AudioRecorderWorklet.js",
     "recorder-controls.js",
+    "mp3-encoder.js",
+    "mp3-encoder-worker.js",
     "background.js",
     "lamejs.iife.js",
     "README.md",
